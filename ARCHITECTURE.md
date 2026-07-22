@@ -35,7 +35,7 @@ makes side effects explicit, reversible, and auditable.
 ```
 domain (pure core: contrast / tokens / audit / extract)   ← unchanged, no MCP knowledge
    └── ProMCP triadic surface  (@can_do_tool / @read_tool / @do_tool)   ← ultimate_ui/promcp_surface.py
-         └── promcp.transport adapter  (can_do__/read__/do__ prefixes)  ← server.py wires it
+         └── promcp.transport adapter  (can_do/read_/do_ names)  ← server.py wires it
                └── FastMCP  (MCP plumbing)                              ← reached only via .raw
 ```
 
@@ -46,11 +46,11 @@ grep `.raw` to audit transport coupling, exactly as ProMCP intends.
 ## Surface
 
 **Tools** (exposed with canonical prefixes)
-- `can_do__feasibility(intent, scope?)` — gate for: extract_design_system, write_token_files,
+- `can_do(intent, scope?)` — gate for: extract_design_system, write_token_files,
   generate_tokens, audit_ui, check_contrast.
-- `read__design_reference(stage)` · `read__web_guidelines()` · `read__contrast(fg, bg, large?)`
-  · `read__ui_audit(files)` · `read__generated_tokens(spec, targets?)` · `read__extracted_design_system(url)`
-- `do__write_token_files(spec, output_dir, idempotency_key, targets?)`
+- `read_design_reference(stage)` · `read_web_guidelines()` · `read_contrast(fg, bg, large?)`
+  · `read_ui_audit(files)` · `read_generated_tokens(spec, targets?)` · `read_extracted_design_system(url)`
+- `do_write_token_files(spec, output_dir, idempotency_key, targets?)`
 
 The four paradigm verticals (`web`, `flutter-material`, `flutter-cupertino`, `email`) are the
 unit of vertical determinism; `health.PARADIGMS` maps each to its emitter targets and role
@@ -89,7 +89,7 @@ pip install playwright && playwright install chromium
 
 python server.py            # stdio transport
 ```
-Tests: `PYTHONPATH=. python tests/test_core.py` (9 pass, incl. the clean-lint assertion).
+Tests: `PYTHONPATH=. python tests/test_core.py` (30 pass, incl. the clean-lint assertion).
 
 ## Client configuration
 

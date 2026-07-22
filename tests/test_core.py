@@ -293,11 +293,13 @@ def test_lifecycle_state_survives_reload():
 
 
 def test_transport_exposes_prefixed_surface():
+    # promcp 0.3.0 (stable) transport names: singleton `can_do`, and single-underscore
+    # `read_<cap>` / `do_<cap>` — this is what end users get via `uvx`.
     from server import build_server
     names = {t.name for t in asyncio.run(build_server().raw.list_tools())}
-    assert {"can_do__feasibility", "read__contrast", "do__write_token_files",
-            "read__lifecycle_state", "do__lifecycle_transition",
-            "do__set_restriction_mode"} <= names
+    assert {"can_do", "read_contrast", "do_write_token_files",
+            "read_lifecycle_state", "do_lifecycle_transition",
+            "do_set_restriction_mode"} <= names
 
 
 if __name__ == "__main__":

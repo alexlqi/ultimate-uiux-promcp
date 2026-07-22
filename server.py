@@ -24,17 +24,18 @@ INSTRUCTIONS = (
     "of truth: primitive → semantic → component, nothing hardcoded. read_* observes "
     "(contrast, generated token text, site extraction, audits, knowledge, preflight, spec "
     "validation, diagnostics); do_write_token_files is the only mutation (persists files, "
-    "compensable); can_do__feasibility gates preconditions. Three paradigm verticals: "
+    "compensable); can_do gates preconditions. Four paradigm verticals: "
     "web = React + Tailwind v4 + shadcn/ui; flutter-material = Flutter/Material 3 (Android); "
-    "flutter-cupertino = Flutter/Cupertino·HIG (iOS). For fast + fault-tolerant builds: "
-    "read__preflight('<paradigm>') → read__spec_validation(spec,'<paradigm>') → "
-    "read__generated_tokens → do__write_token_files, and read__diagnostics to debug. "
-    "Read read__design_reference('<stage>') before building each stage."
+    "flutter-cupertino = Flutter/Cupertino·HIG (iOS); email = bulletproof cross-client HTML "
+    "email (Outlook/Gmail/Apple Mail, dark mode, CAN-SPAM). For fast + fault-tolerant builds: "
+    "read_preflight('<paradigm>') → read_spec_validation(spec,'<paradigm>') → "
+    "read_generated_tokens → do_write_token_files, and read_diagnostics to debug. "
+    "Read read_design_reference('<stage>') before building each stage."
 )
 
 # Map ToolEntry.category -> the transport register method + how to derive the capability slug.
 _CATEGORY_REGISTRARS = {
-    "can_do": lambda srv, entry: srv.register_can_do("feasibility"),
+    "can_do": lambda srv, entry: srv.register_can_do(),
     "read":   lambda srv, entry: srv.register_read(entry.name[len("read_"):]),
     "do":     lambda srv, entry: srv.register_do(entry.name[len("do_"):]),
 }
@@ -63,36 +64,38 @@ def _attach_knowledge_and_prompts(server: ProMCPServer) -> None:
 
     @mcp.resource("uidesign://reference/{stage}")
     def reference(stage: str) -> str:
-        """Design knowledge for a pipeline stage (mirror of read__design_reference)."""
+        """Design knowledge for a pipeline stage (mirror of read_design_reference)."""
         fname = _STAGES.get(stage)
         return (KNOWLEDGE / fname).read_text(encoding="utf-8") if fname else f"Unknown stage '{stage}'."
 
     @mcp.prompt
     def design_pipeline(brief: str, paradigm: str = "web") -> str:
         """Orchestrate the full token-first pipeline for a paradigm vertical.
-        paradigm ∈ {web, flutter-material (Android), flutter-cupertino (iOS)}."""
+        paradigm ∈ {web, flutter-material (Android), flutter-cupertino (iOS), email (HTML email)}."""
         stack_ref = {
             "web": "web-stack",
             "flutter-material": "flutter-material",
             "flutter-cupertino": "flutter-cupertino",
+            "email": "email",
         }.get(paradigm, "web-stack")
         target = {"web": "shadcn (+css/tailwind/dtcg)",
                   "flutter-material": "flutter-material",
-                  "flutter-cupertino": "flutter-cupertino"}.get(paradigm, "shadcn")
+                  "flutter-cupertino": "flutter-cupertino",
+                  "email": "email"}.get(paradigm, "shadcn")
         return (
-            f"Design and build: {brief}\nParadigm: {paradigm} → read__design_reference('{stack_ref}').\n\n"
+            f"Design and build: {brief}\nParadigm: {paradigm} → read_design_reference('{stack_ref}').\n\n"
             "Run the token-first pipeline using this server's ProMCP tools:\n"
-            f"0. Preflight — read__preflight('{paradigm}'); resolve blockers before building (warnings are OK).\n"
-            "1. Intelligence — read__design_reference('intelligence'); produce a design-system "
+            f"0. Preflight — read_preflight('{paradigm}'); resolve blockers before building (warnings are OK).\n"
+            "1. Intelligence — read_design_reference('intelligence'); produce a design-system "
             "decision (pattern, palette, type ramp, spacing, effects, anti-pattern list).\n"
-            f"2. Validate — read__spec_validation(spec, '{paradigm}'); fix every error before persisting.\n"
-            f"3. Tokens — read__generated_tokens(spec, targets=['{target}']); verify its _contrast_check. "
-            "can_do__feasibility({'semantic_tags':['write_token_files'],'context':{'output_dir':...}}) "
-            "then do__write_token_files to persist.\n"
-            f"4. Components — read__design_reference('{stack_ref}'); consume ONLY tokens, all states.\n"
-            "5. Motion — read__design_reference('motion'); add sparingly by interaction frequency.\n"
-            "6. Audit — read__web_guidelines + read__ui_audit(files); fix before done.\n"
-            "7. Debug — if anything is off, read__diagnostics to inspect the ledger + emitter health.\n\n"
+            f"2. Validate — read_spec_validation(spec, '{paradigm}'); fix every error before persisting.\n"
+            f"3. Tokens — read_generated_tokens(spec, targets=['{target}']); verify its _contrast_check. "
+            "can_do({'semantic_tags':['write_token_files'],'context':{'output_dir':...}}) "
+            "then do_write_token_files to persist.\n"
+            f"4. Components — read_design_reference('{stack_ref}'); consume ONLY tokens, all states.\n"
+            "5. Motion — read_design_reference('motion'); add sparingly by interaction frequency.\n"
+            "6. Audit — read_web_guidelines + read_ui_audit(files); fix before done.\n"
+            "7. Debug — if anything is off, read_diagnostics to inspect the ledger + emitter health.\n\n"
             "Never hardcode a value that should be a token. Pass the anti-slop gate."
         )
 
@@ -100,8 +103,8 @@ def _attach_knowledge_and_prompts(server: ProMCPServer) -> None:
     def audit_only(target: str = "the provided component files") -> str:
         """Prompt for an audit-only pass."""
         return (
-            f"Audit {target}.\n1. read__web_guidelines for current rules.\n"
-            "2. read__ui_audit(files) for deterministic findings.\n"
+            f"Audit {target}.\n1. read_web_guidelines for current rules.\n"
+            "2. read_ui_audit(files) for deterministic findings.\n"
             "3. Add judgment-level findings the heuristics miss (hierarchy, motion, states).\n"
             "Report file:line grouped by severity with counts. Don't rewrite unprompted."
         )

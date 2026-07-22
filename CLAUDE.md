@@ -48,7 +48,7 @@ Understanding these four layers (top imports down, never up) is the key to being
 ```
 domain (pure core: contrast / tokens / audit / extract)   ← no MCP knowledge at all
    └── ProMCP triadic surface  (@can_do_tool / @read_tool / @do_tool)   ← ultimate_ui/promcp_surface.py
-         └── promcp.transport adapter  (adds can_do__/read__/do__ prefixes)  ← server.py wires it
+         └── promcp.transport adapter  (adds can_do/read_/do_ names)  ← server.py wires it
                └── FastMCP  (MCP plumbing)                                    ← reached only via .raw
 ```
 
@@ -63,7 +63,7 @@ and the category is enforced at **decoration time** (fail-fast — a misprefixed
 missing `idempotency_key` raises before the server can start):
 
 - **`can_do`** — a *singleton* feasibility gate. There is exactly ONE (`can_do` in
-  `promcp_surface.py`, exposed as `can_do__feasibility`). It takes an intent with
+  `promcp_surface.py`, exposed as `can_do`). It takes an intent with
   `semantic_tags` and returns `{candidates, blocked}`; `feasible` is auto-calculated.
   Capabilities and their precondition checks live in the `_CAPABILITIES` dict.
 - **`read_*`** — side-effect-free **observations**, auto-wrapped in the
@@ -111,7 +111,7 @@ tool, decide honestly which category it is — if it touches the world it's a `d
 Tools are registered into a **dedicated `Registry`** (in `promcp_surface.py`, not the global
 default) so the surface is independently lintable. `build_server()` iterates `registry.all()`
 and dispatches each entry through `_CATEGORY_REGISTRARS` (maps category → the transport's
-`register_can_do/register_read/register_do`, which apply the `can_do__`/`read__`/`do__` prefixes).
+`register_can_do/register_read/register_do`, which apply the `can_do`/`read_`/`do_` names).
 Resources (`uidesign://reference/{stage}`) and prompts (`design_pipeline`, `audit_only`) are
 attached via `server.raw` because they're not part of the triadic *tool* surface.
 
