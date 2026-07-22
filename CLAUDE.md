@@ -6,9 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A token-first UI design pipeline exposed as a **ProMCP-native** MCP server. It runs over
 `promcp>=0.3.0`, which sits over `fastmcp>=3.4,<4`. The server helps an LLM design and
-build UIs across three deterministic **paradigm verticals** — `web` (React + Tailwind v4 +
-shadcn/ui), `flutter-material` (Flutter/Material 3, Android), and `flutter-cupertino`
-(Flutter/Cupertino·HIG, iOS) — where design tokens are the single source of truth. A horizontal
+build UIs across four deterministic **paradigm verticals** — `web` (React + Tailwind v4 +
+shadcn/ui), `flutter-material` (Flutter/Material 3, Android), `flutter-cupertino`
+(Flutter/Cupertino·HIG, iOS), and `email` (bulletproof responsive HTML email for
+Outlook/Gmail/Apple Mail) — where design tokens are the single source of truth. A horizontal
 stability layer (preflight, spec validation, diagnostics) makes builds fast and fault-tolerant.
 
 ## Docs
@@ -85,12 +86,15 @@ tool, decide honestly which category it is — if it touches the world it's a `d
 
 - `contrast.py` — pure WCAG 2.1 ratio + APCA Lc math. Verifiable numbers, not estimates.
 - `tokens.py` — `TokenSpec` dataclass + emitters. One design decision → deterministic files.
-  **Three paradigm verticals**, each its own emitter: web (`emit_css`, `emit_tailwind_v4`,
+  **Four paradigm verticals**, each its own emitter: web (`emit_css`, `emit_tailwind_v4`,
   `emit_shadcn`) + DTCG (`build_dtcg`); Android (`emit_flutter_material` → MD3: seeded
   `ColorScheme.fromSeed` with spec roles pinned, 8-dp grid, 48-dp touch floor, `ThemeExtension`);
   iOS (`emit_flutter_cupertino` → HIG: `CupertinoThemeData`, 44-pt floor, `AppTokensScope`
-  InheritedWidget). `emit_flutter` (adaptive/combined) is kept for backward compatibility. Same
-  input always yields the same output (reviewable/diffable).
+  InheritedWidget); email (`emit_email` → one `email.html`: XHTML 1.0 + `xmlns:v`/`xmlns:o`, MSO
+  DPI/ghost tables, inline styles, a VML+anchor bulletproof button, `prefers-color-scheme` +
+  `[data-ogsc]`/`[data-ogsb]` dark mode, fluid-hybrid columns that survive Gmail head-stripping,
+  and a CAN-SPAM/GDPR footer). `emit_flutter` (adaptive/combined) is kept for backward
+  compatibility. Same input always yields the same output (reviewable/diffable).
 - `health.py` — the horizontal stability layer (pure observations): `preflight(paradigm)` doctors
   a paradigm's toolchain; `validate_spec(spec, paradigm)` catches malformed specs before the `do_`;
   `diagnostics(ledger)` is the debug channel. `PARADIGMS` maps each vertical → its emitter targets
@@ -118,8 +122,8 @@ attached via `server.raw` because they're not part of the triadic *tool* surface
   keep them in sync.
 - Token specs must supply sRGB hex for color roles (`bg`, `fg`, `brand` required) so contrast is
   checkable. `_materialize` always appends a `_contrast_check` (full light+dark self-check).
-- A **paradigm** is the unit of vertical determinism: `web`, `flutter-material`, `flutter-cupertino`.
-  `health.PARADIGMS` is the single source for each vertical's emitter targets + role expectations;
+- A **paradigm** is the unit of vertical determinism: `web`, `flutter-material`, `flutter-cupertino`,
+  `email`. `health.PARADIGMS` is the single source for each vertical's emitter targets + role expectations;
   `read_generated_tokens`/`do_write_token_files` select emitters by `targets`, and the emitted
   Flutter filenames are distinct (`app_theme_material.dart` / `app_theme_cupertino.dart`) so all
   three Flutter variants can coexist. Each paradigm also has a knowledge stage in `_STAGES`.

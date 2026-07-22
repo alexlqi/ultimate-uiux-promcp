@@ -44,6 +44,12 @@ PARADIGMS: dict[str, dict] = {
         "soft_roles": ["on-brand", "danger"],
         "label": "Flutter / Cupertino · HIG (iOS)",
     },
+    "email": {
+        "targets": ["dtcg", "email"],
+        "required_roles": ["bg", "fg", "brand"],
+        "soft_roles": ["on-brand", "muted-fg", "border", "canvas"],
+        "label": "HTML email (Outlook/Gmail/Apple Mail · dark-mode · CAN-SPAM)",
+    },
 }
 
 
@@ -86,6 +92,14 @@ def preflight(paradigm: str) -> dict:
                              f"{pm} available" if pm else "no npm/pnpm/yarn/bun on PATH"))
         checks.append(_check("tailwind", True,
                              "Tailwind v4 is a project-local dep (npm i tailwindcss@next); not a global check",
+                             severity="warning"))
+    elif paradigm == "email":
+        # Email output is host-agnostic HTML — nothing to install to generate it. The real
+        # validation is cross-client rendering, which is a hosted service (not a local binary),
+        # so it degrades the report as a warning rather than blocking token generation.
+        checks.append(_check("html-output", True, "email is plain HTML; no build toolchain required"))
+        checks.append(_check("cross-client-testing", False,
+                             "verify in Litmus/Email on Acid before sending; not automatable locally",
                              severity="warning"))
     else:  # flutter-material / flutter-cupertino
         flutter = _has("flutter")
@@ -212,6 +226,7 @@ _EMITTERS = {
     "flutter": _tokens.emit_flutter,
     "flutter-material": _tokens.emit_flutter_material,
     "flutter-cupertino": _tokens.emit_flutter_cupertino,
+    "email": _tokens.emit_email,
 }
 
 

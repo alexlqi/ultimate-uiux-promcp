@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 __all__ = [
     "TokenSpec", "build_dtcg", "emit_css", "emit_tailwind_v4", "emit_shadcn",
     "emit_flutter", "emit_flutter_material", "emit_flutter_cupertino",
+    "emit_email",
 ]
 
 # A safe default scale so callers can pass a minimal spec and still get a full system.
@@ -290,6 +291,234 @@ def emit_flutter_cupertino(spec: TokenSpec) -> str:
         "abstract final class AppTheme {\n"
         f"{theme('light','light')}\n\n{theme('dark','dark')}\n}}\n"
     )
+
+
+# ── email vertical — bulletproof HTML email ──────────────────────────────────
+def _px(v: str, default: int) -> int:
+    """'24px' / '24' -> 24 (an int); default if unparseable."""
+    n = "".join(c for c in str(v) if c.isdigit())
+    return int(n) if n else default
+
+
+def _safe_font(spec: TokenSpec) -> str:
+    """Spec sans family with mandatory email-safe fallbacks appended.
+
+    Web fonts almost never load in Outlook/Gmail; every email-safe stack must end in a
+    system family so text always renders. We keep the spec's first family (brand voice)
+    and guarantee an Arial/Helvetica/sans-serif tail.
+    """
+    sans = spec.font.get("sans", "Arial, sans-serif")
+    head = sans.split(",")[0].strip()
+    tail = "Arial, 'Helvetica Neue', Helvetica, sans-serif"
+    if head.lower() in ("arial", "helvetica", "'helvetica neue'", "helvetica neue"):
+        return f"{head}, {tail}" if head.lower() != "arial" else "Arial, 'Helvetica Neue', Helvetica, sans-serif"
+    return f"{head}, {tail}"
+
+
+def emit_email(spec: TokenSpec, *, href: str = "https://example.com", cta: str = "Get started",
+               preheader: str = "") -> str:
+    """Email vertical — a bulletproof, responsive, dark-mode-aware HTML email.
+
+    The single source of truth is still the token spec: colors/spacing/radius/fonts flow into
+    an email-safe document (XHTML 1.0 doctype, table layout, inline styles, MSO ghost tables +
+    VML button for Outlook's Word engine, prefers-color-scheme + [data-ogsc] dark mode,
+    CAN-SPAM/GDPR footer scaffold). Same spec → same HTML, so it's reviewable and diffable.
+
+    The output is a complete newsletter skeleton (preheader · header · hero · bulletproof CTA ·
+    fluid-hybrid two-column feature row that stacks on mobile · divider · compliance footer),
+    meant to be copied and filled in — every hard compatibility decision is already made.
+    """
+    L, D = spec.light, spec.dark
+    page_bg = L.get("canvas") or L.get("muted") or "#f4f4f7"
+    page_bg_d = D.get("canvas") or D.get("muted") or "#0b0c0e"
+    body_bg = L.get("bg", "#ffffff")
+    body_bg_d = D.get("bg", "#151719")
+    text = L.get("fg", "#1a1a1a")
+    text_d = D.get("fg", "#eaeaea")
+    muted = L.get("muted-fg", "#6b7280")
+    muted_d = D.get("muted-fg", "#9aa1ab")
+    brand = L.get("brand", "#2f6bff")
+    brand_d = D.get("brand", L.get("brand", "#5b8bff"))
+    on_brand = L.get("on-brand", "#ffffff")
+    on_brand_d = D.get("on-brand", on_brand)
+    border = L.get("border", "#e6e8eb")
+    border_d = D.get("border", "#2a2d31")
+    font = _safe_font(spec)
+    radius = _px(spec.radius.get("md", "10px"), 10)
+    pad = _px(spec.space.get("8", "32px"), 32)          # container gutter
+    gap = _px(spec.space.get("6", "24px"), 24)          # vertical rhythm
+    sp = _px(spec.space.get("4", "16px"), 16)           # small gap
+    btn_h = 48                                           # 44pt+ touch target
+    arcsize = f"{min(50, round(radius / (btn_h / 2) * 100))}%"  # VML arcsize is % of half-height
+    pre = preheader or f"{spec.name} — a quick note from our team. Preview text lives here."
+
+    subs = {
+        "@@TITLE@@": spec.name, "@@FONT@@": font, "@@PRE@@": pre,
+        "@@HREF@@": href, "@@CTA@@": cta,
+        "@@PAGE_BG@@": page_bg, "@@PAGE_BG_D@@": page_bg_d,
+        "@@BODY_BG@@": body_bg, "@@BODY_BG_D@@": body_bg_d,
+        "@@TEXT@@": text, "@@TEXT_D@@": text_d,
+        "@@MUTED@@": muted, "@@MUTED_D@@": muted_d,
+        "@@BRAND@@": brand, "@@BRAND_D@@": brand_d,
+        "@@ONBRAND@@": on_brand, "@@ONBRAND_D@@": on_brand_d,
+        "@@BORDER@@": border, "@@BORDER_D@@": border_d,
+        "@@RADIUS@@": str(radius), "@@ARCSIZE@@": arcsize,
+        "@@PAD@@": str(pad), "@@GAP@@": str(gap), "@@SP@@": str(sp),
+        "@@BTN_H@@": str(btn_h),
+    }
+    out = _EMAIL_TEMPLATE
+    for k, v in subs.items():
+        out = out.replace(k, v)
+    return out
+
+
+# XHTML 1.0 Transitional + VML namespaces are what Outlook's Word engine expects. Placeholders
+# (@@…@@) are substituted deterministically; no f-string so CSS braces/percents pass through raw.
+_EMAIL_TEMPLATE = """<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "https://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="x-apple-disable-message-reformatting" />
+  <meta name="format-detection" content="telephone=no, date=no, address=no, email=no, url=no" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="supported-color-schemes" content="light dark" />
+  <title>@@TITLE@@</title>
+  <!--[if gte mso 9]>
+  <xml><o:OfficeDocumentSettings><o:AllowPNG/><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml>
+  <![endif]-->
+  <!--[if mso]>
+  <style type="text/css">
+    table, td, div, h1, h2, p, a { font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif !important; }
+    table { border-collapse: collapse; }
+  </style>
+  <![endif]-->
+  <style type="text/css">
+    /* client resets */
+    :root { color-scheme: light dark; supported-color-schemes: light dark; }
+    html, body { margin: 0 !important; padding: 0 !important; width: 100% !important; }
+    body, table, td, a { -ms-text-size-adjust: 100%; -webkit-text-size-adjust: 100%; }
+    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; border-collapse: collapse; }
+    td, p, a, span, h1, h2 { mso-line-height-rule: exactly; }
+    img { -ms-interpolation-mode: bicubic; border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; }
+    a { text-decoration: none; }
+    a[x-apple-data-detectors] { color: inherit !important; text-decoration: none !important; font-size: inherit !important; font-family: inherit !important; font-weight: inherit !important; line-height: inherit !important; }
+    u + #body a { color: inherit; text-decoration: none; }
+    /* fluid-hybrid: columns that stack when media queries are stripped (Gmail app / GANGA) */
+    .col { display: inline-block; width: 100%; max-width: 280px; vertical-align: top; }
+    /* responsive (Apple Mail, iOS, Gmail app on primary account, most webmail) */
+    @media only screen and (max-width: 620px) {
+      .container { width: 100% !important; }
+      .px { padding-left: 20px !important; padding-right: 20px !important; }
+      .stack { display: block !important; width: 100% !important; max-width: 100% !important; }
+      .h1 { font-size: 26px !important; line-height: 32px !important; }
+      .btn-a { display: block !important; width: 100% !important; }
+    }
+    /* dark mode: prefers-color-scheme (Apple Mail, iOS 13+, Outlook mac/app) */
+    @media (prefers-color-scheme: dark) {
+      .email-bg { background: @@PAGE_BG_D@@ !important; }
+      .card { background: @@BODY_BG_D@@ !important; }
+      .text { color: @@TEXT_D@@ !important; }
+      .muted { color: @@MUTED_D@@ !important; }
+      .divider { border-color: @@BORDER_D@@ !important; }
+      .brand { color: @@BRAND_D@@ !important; }
+      .btn-a { background: @@BRAND_D@@ !important; color: @@ONBRAND_D@@ !important; }
+    }
+    /* dark mode: Outlook.com / Windows Outlook data-ogsc/ogsb overrides */
+    [data-ogsc] .text { color: @@TEXT_D@@ !important; }
+    [data-ogsc] .muted { color: @@MUTED_D@@ !important; }
+    [data-ogsb] .email-bg { background: @@PAGE_BG_D@@ !important; }
+    [data-ogsb] .card { background: @@BODY_BG_D@@ !important; }
+  </style>
+</head>
+<body id="body" style="margin:0; padding:0; width:100%; background:@@PAGE_BG@@;">
+  <!-- preheader: preview text, then whitespace to push gmail's snippet grab away from real content -->
+  <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:@@PAGE_BG@@;">
+    @@PRE@@&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;
+  </div>
+
+  <table role="presentation" class="email-bg" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:@@PAGE_BG@@;">
+    <tr>
+      <td align="center" style="padding:@@GAP@@px 12px;">
+        <!--[if mso]><table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
+        <table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px; max-width:600px;">
+
+          <!-- header / wordmark -->
+          <tr><td class="px" style="padding:@@SP@@px @@PAD@@px;">
+            <span class="brand" style="font-family:@@FONT@@; font-size:18px; font-weight:700; letter-spacing:-0.02em; color:@@BRAND@@;">@@TITLE@@</span>
+          </td></tr>
+
+          <!-- card -->
+          <tr><td>
+            <table role="presentation" class="card" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:@@BODY_BG@@; border-radius:@@RADIUS@@px;">
+
+              <!-- hero -->
+              <tr><td class="px" style="padding:@@PAD@@px @@PAD@@px @@SP@@px;">
+                <h1 class="h1 text" style="margin:0; font-family:@@FONT@@; font-size:30px; line-height:36px; font-weight:800; letter-spacing:-0.02em; color:@@TEXT@@; mso-line-height-rule:exactly;">One clear message per email.</h1>
+              </td></tr>
+              <tr><td class="px" style="padding:0 @@PAD@@px @@GAP@@px;">
+                <p class="text" style="margin:0; font-family:@@FONT@@; font-size:16px; line-height:26px; color:@@TEXT@@; mso-line-height-rule:exactly;">Lead with the single thing you want the reader to do. Keep paragraphs short, contrast high, and the call to action unmistakable. This template already handles Outlook, Gmail clipping, dark mode, and mobile stacking for you.</p>
+              </td></tr>
+
+              <!-- bulletproof CTA button -->
+              <tr><td class="px" align="left" style="padding:0 @@PAD@@px @@GAP@@px;">
+                <!--[if mso]>
+                <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="@@HREF@@" style="height:@@BTN_H@@px; v-text-anchor:middle; width:220px;" arcsize="@@ARCSIZE@@" strokecolor="@@BRAND@@" fillcolor="@@BRAND@@">
+                  <w:anchorlock/>
+                  <center style="color:@@ONBRAND@@; font-family:Arial,sans-serif; font-size:16px; font-weight:bold;">@@CTA@@</center>
+                </v:roundrect>
+                <![endif]-->
+                <!--[if !mso]><!-- -->
+                <a class="btn-a" href="@@HREF@@" style="background:@@BRAND@@; color:@@ONBRAND@@; display:inline-block; font-family:@@FONT@@; font-size:16px; font-weight:700; line-height:@@BTN_H@@px; text-align:center; text-decoration:none; border-radius:@@RADIUS@@px; padding:0 28px; min-height:@@BTN_H@@px;">@@CTA@@</a>
+                <!--<![endif]-->
+              </td></tr>
+
+              <!-- divider -->
+              <tr><td class="px" style="padding:0 @@PAD@@px;">
+                <div class="divider" style="border-top:1px solid @@BORDER@@; font-size:0; line-height:0;">&nbsp;</div>
+              </td></tr>
+
+              <!-- fluid-hybrid two-column feature row: inline-block cols wrap with NO media query
+                   (survives Gmail-app/GANGA head-stripping); MSO ghost cells keep Outlook side-by-side.
+                   font-size:0 on the wrapper kills the inline-block whitespace gap. -->
+              <tr><td class="px" style="padding:@@GAP@@px @@PAD@@px;">
+                <div style="font-size:0; text-align:left;">
+                  <!--[if mso]><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td width="50%" valign="top" style="padding-right:@@SP@@px;"><![endif]-->
+                  <div class="col" style="display:inline-block; width:100%; max-width:255px; vertical-align:top;">
+                    <p class="text" style="margin:0 0 4px; font-family:@@FONT@@; font-size:15px; font-weight:700; color:@@TEXT@@;">Renders everywhere</p>
+                    <p class="muted" style="margin:0 0 @@SP@@px; font-family:@@FONT@@; font-size:14px; line-height:22px; color:@@MUTED@@;">Table layout + VML means Outlook's Word engine shows the same design as Apple Mail.</p>
+                  </div>
+                  <!--[if mso]></td><td width="50%" valign="top"><![endif]-->
+                  <div class="col" style="display:inline-block; width:100%; max-width:255px; vertical-align:top;">
+                    <p class="text" style="margin:0 0 4px; font-family:@@FONT@@; font-size:15px; font-weight:700; color:@@TEXT@@;">Accessible by default</p>
+                    <p class="muted" style="margin:0; font-family:@@FONT@@; font-size:14px; line-height:22px; color:@@MUTED@@;">Semantic contrast, real text (not image-only), and a preheader the token check verifies.</p>
+                  </div>
+                  <!--[if mso]></td></tr></table><![endif]-->
+                </div>
+              </td></tr>
+
+            </table>
+          </td></tr>
+
+          <!-- compliance footer (CAN-SPAM / GDPR): physical address + unmistakable unsubscribe -->
+          <tr><td class="px" style="padding:@@GAP@@px @@PAD@@px;">
+            <p class="muted" style="margin:0 0 8px; font-family:@@FONT@@; font-size:12px; line-height:18px; color:@@MUTED@@;">You are receiving this because you signed up for @@TITLE@@.<br />@@TITLE@@, Inc. · 123 Example Street, Suite 100 · City, ST 00000 · Country</p>
+            <p class="muted" style="margin:0; font-family:@@FONT@@; font-size:12px; line-height:18px; color:@@MUTED@@;">
+              <a class="muted" href="{{unsubscribe_url}}" style="color:@@MUTED@@; text-decoration:underline;">Unsubscribe</a> &nbsp;·&nbsp;
+              <a class="muted" href="{{preferences_url}}" style="color:@@MUTED@@; text-decoration:underline;">Update preferences</a> &nbsp;·&nbsp;
+              <a class="muted" href="{{view_in_browser_url}}" style="color:@@MUTED@@; text-decoration:underline;">View in browser</a>
+            </p>
+          </td></tr>
+
+        </table>
+        <!--[if mso]></td></tr></table><![endif]-->
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+"""
 
 
 def emit_flutter(spec: TokenSpec) -> str:

@@ -52,7 +52,12 @@ grep `.raw` to audit transport coupling, exactly as ProMCP intends.
   · `read__ui_audit(files)` · `read__generated_tokens(spec, targets?)` · `read__extracted_design_system(url)`
 - `do__write_token_files(spec, output_dir, idempotency_key, targets?)`
 
-**Resources** — `uidesign://reference/{stage}` (nine knowledge docs).
+The four paradigm verticals (`web`, `flutter-material`, `flutter-cupertino`, `email`) are the
+unit of vertical determinism; `health.PARADIGMS` maps each to its emitter targets and role
+expectations, and `read_generated_tokens`/`do_write_token_files` select emitters by `targets`
+(email → `email.html`, a bulletproof cross-client HTML newsletter).
+
+**Resources** — `uidesign://reference/{stage}` knowledge docs (incl. `email`).
 **Prompts** — `design_pipeline(brief, stack)`, `audit_only(target)`.
 
 ## ProMCP-clean
@@ -60,7 +65,8 @@ grep `.raw` to audit transport coupling, exactly as ProMCP intends.
 The server ships a linter pass over its own registry:
 ```bash
 PYTHONPATH=. python -c "from server import lint; lint()"
-# ProMCP lint: 8 tools, 0 errors, 0 warnings
+# ProMCP lint: 14 tools, 0 errors, 0 warnings
+# (one tolerated global S004 advisory — the stability + lifecycle layers intentionally exceed 8 tools)
 ```
 Contracts are validated at **decoration time** (fail-fast): a `do_*` without `idempotency_key`,
 or a mis-prefixed name, raises before the server can start.

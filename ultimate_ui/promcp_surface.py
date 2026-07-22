@@ -39,7 +39,7 @@ _STAGES = {
     "extract": "extract.md", "image-to-code": "image-to-code.md", "motion": "motion.md",
     "audit": "web-guidelines.md", "web-stack": "web-stack.md", "flutter": "flutter.md",
     "flutter-material": "flutter-material.md", "flutter-cupertino": "flutter-cupertino.md",
-    "lifecycle": "lifecycle.md",
+    "email": "email.md", "lifecycle": "lifecycle.md",
 }
 
 # Capabilities the can_do gate reasons about, with their precondition checks.
@@ -145,7 +145,8 @@ def _iso_in(seconds: int) -> str:
     description=("Read the design-knowledge reference for a pipeline stage. Stages: "
                  "intelligence, tokens, brand, extract, image-to-code, motion, audit, "
                  "web-stack, flutter (adaptive), flutter-material (Android/MD3), "
-                 "flutter-cupertino (iOS/HIG). Read the stage before building it. Not for live web data."),
+                 "flutter-cupertino (iOS/HIG), email (bulletproof HTML email). Read the "
+                 "stage before building it. Not for live web data."),
     registry=registry,
 )
 def read_design_reference(stage: str) -> dict:
@@ -194,9 +195,11 @@ def read_ui_audit(files: dict) -> dict:
                  ":root/.dark, and three Flutter verticals — 'flutter' (adaptive), "
                  "'flutter-material' (Material 3 / Android: seeded ColorScheme, 8-dp grid, "
                  "ThemeExtension) and 'flutter-cupertino' (HIG / iOS: CupertinoThemeData, "
-                 "44-pt targets, AppTokensScope). targets from {dtcg,css,tailwind,shadcn,flutter,"
-                 "flutter-material,flutter-cupertino}; default = web + adaptive bundle. Includes a full "
-                 "light+dark contrast self-check. To persist, hand the result to the do_* action."),
+                 "44-pt targets, AppTokensScope), and 'email' (bulletproof responsive HTML email: "
+                 "XHTML doctype, table layout, MSO ghost tables + VML button, prefers-color-scheme + "
+                 "[data-ogsc] dark mode, CAN-SPAM/GDPR footer). targets from {dtcg,css,tailwind,shadcn,"
+                 "flutter,flutter-material,flutter-cupertino,email}; default = web + adaptive bundle. "
+                 "Includes a full light+dark contrast self-check. To persist, hand the result to the do_* action."),
     registry=registry,
 )
 def read_generated_tokens(spec: dict, targets: list = None) -> dict:
@@ -218,9 +221,10 @@ def read_extracted_design_system(url: str) -> dict:
 
 @read_tool(
     description=("Preflight/doctor for a build paradigm: is its toolchain present? paradigm ∈ "
-                "{web, flutter-material, flutter-cupertino}. Returns {ready, checks, blockers, "
+                "{web, flutter-material, flutter-cupertino, email}. Returns {ready, checks, blockers, "
                 "warnings} — blockers stop a real build, warnings degrade (e.g. iOS build tools "
-                "absent off macOS; token generation still works). Run before scaffolding a stack."),
+                "absent off macOS; email needs no toolchain but warns to verify in Litmus/Email on "
+                "Acid). Run before scaffolding a stack."),
     registry=registry,
 )
 def read_preflight(paradigm: str = "web") -> dict:
@@ -232,7 +236,7 @@ def read_preflight(paradigm: str = "web") -> dict:
 @read_tool(
     description=("Validate a token spec BEFORE persisting it (fault-tolerance gate). Checks required "
                 "roles exist and parse, colors are valid sRGB, dark mode present, soft-role fallbacks, "
-                "and AA/APCA contrast — per paradigm {web, flutter-material, flutter-cupertino}. Returns "
+                "and AA/APCA contrast — per paradigm {web, flutter-material, flutter-cupertino, email}. Returns "
                 "{valid, errors, warnings, summary}. On errors ⇒ do NOT persist yet (skip the do_ action)."),
     registry=registry,
 )
@@ -357,7 +361,8 @@ def _recent_events(n: int = 20) -> list:
 @do_tool(
     description=("Persist generated token files to a directory. This is the pipeline's only "
                  "true mutation (it writes to disk). Idempotent by key; compensable by deleting "
-                 "the written files. targets subset of {dtcg,css,tailwind,shadcn,flutter}. Honors "
+                 "the written files. targets subset of {dtcg,css,tailwind,shadcn,flutter,"
+                 "flutter-material,flutter-cupertino,email}. Honors "
                  "the restriction mode (see do_set_restriction_mode): in 'high' a LOCKED layout "
                  "(layout_id defaults to spec.name, paradigm 'web') blocks the write (status='failed', "
                  "change-paths in compensation_hint); in 'mid' the write proceeds with status='partial' "
@@ -408,6 +413,7 @@ def do_write_token_files(
         "app_theme.dart": "app_theme.dart",
         "app_theme.dart (material 3 / android)": "app_theme_material.dart",
         "app_theme.dart (cupertino / ios)": "app_theme_cupertino.dart",
+        "email.html": "email.html",
     }
     previously = sorted(str(p) for p in out.iterdir()) if out.exists() else []
     written = []
@@ -587,5 +593,7 @@ def _materialize(spec: dict, targets) -> dict:
         out["app_theme.dart (material 3 / android)"] = _tokens.emit_flutter_material(ts)
     if "flutter-cupertino" in targets:
         out["app_theme.dart (cupertino / ios)"] = _tokens.emit_flutter_cupertino(ts)
+    if "email" in targets:
+        out["email.html"] = _tokens.emit_email(ts)
     out["_contrast_check"] = _token_contrast(spec)
     return out

@@ -1,7 +1,7 @@
 # ultimate-ui-design
 
 An MCP server that turns **design tokens into real, consistent UI** — for the web, Android,
-and iOS — straight from your AI assistant (Claude Code, Claude Desktop, or any MCP client).
+iOS, and email — straight from your AI assistant (Claude Code, Claude Desktop, or any MCP client).
 
 You describe what you want ("a calm fintech dashboard, dark-mode first"); the server walks the
 model through a disciplined, token-first pipeline and can write the actual theme files to your
@@ -14,10 +14,11 @@ contrast is checked for you, and the output is the same every time you run it.
 
 ## What you get
 
-- **Three build targets ("paradigms"), one workflow**
+- **Four build targets ("paradigms"), one workflow**
   - `web` — React + Tailwind v4 + shadcn/ui
   - `flutter-material` — Flutter / Material 3 (Android)
   - `flutter-cupertino` — Flutter / Cupertino · HIG (iOS)
+  - `email` — bulletproof responsive HTML email (Outlook/Gmail/Apple Mail · dark mode · CAN-SPAM)
 - **Tokens as the single source of truth** — one design decision generates deterministic,
   diff-able theme files. Same input → same output, every time.
 - **Accessibility built in** — every color pair is checked (WCAG 2.1 + APCA) automatically.
@@ -160,8 +161,9 @@ Only `bg`, `fg`, and `brand` are required — fill in the rest as your design gr
 | `web` | CSS variables, Tailwind v4 theme, shadcn/ui theme, DTCG tokens |
 | `flutter-material` | `app_theme_material.dart` — seeded Material 3 `ColorScheme`, 8-dp grid, `ThemeExtension` |
 | `flutter-cupertino` | `app_theme_cupertino.dart` — `CupertinoThemeData`, 44-pt touch targets, token scope |
+| `email` | `email.html` — bulletproof responsive newsletter: XHTML + VML for Outlook, MSO ghost tables, VML button, `prefers-color-scheme` + `[data-ogsc]` dark mode, CAN-SPAM/GDPR footer, <102 KB (no Gmail clip) |
 
-All three Flutter/web outputs can coexist in the same project.
+All web/Flutter/email outputs can coexist in the same project.
 
 ---
 

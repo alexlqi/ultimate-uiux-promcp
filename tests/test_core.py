@@ -69,6 +69,36 @@ def test_mobile_targets_materialize_and_write():
     assert {"app_theme_material.dart", "app_theme_cupertino.dart"} <= names
 
 
+def test_email_vertical():
+    s = TokenSpec(name="Acme", light=_SPEC["light"], dark=_SPEC["dark"])
+    html = tokens.emit_email(s)
+    # bulletproof/compat markers: XHTML doctype + VML ns, MSO DPI fix, ghost-table width,
+    # presentation tables, VML button, dark mode (both mechanisms), Apple reformat guard,
+    # exact line-height, and a CAN-SPAM unsubscribe.
+    for marker in ('XHTML 1.0 Transitional', 'xmlns:v="urn:schemas-microsoft-com:vml"',
+                   "PixelsPerInch", 'width="600"', 'role="presentation"', "v:roundrect",
+                   "prefers-color-scheme", "[data-ogsc]", "x-apple-disable-message-reformatting",
+                   "mso-line-height-rule", "Unsubscribe"):
+        assert marker in html, f"missing {marker!r}"
+    # tokens actually flow in: brand color reaches the button, spec name is the wordmark
+    assert _SPEC["light"]["brand"] in html and "Acme" in html
+
+
+def test_email_materialize_and_write():
+    v = read_generated_tokens(_SPEC, targets=["email"])["value"]
+    assert "email.html" in v
+    d = tempfile.mkdtemp()
+    r = do_write_token_files(_SPEC, d, idempotency_key="em1", targets=["email"])
+    names = {p.rsplit("\\", 1)[-1].rsplit("/", 1)[-1] for p in r["applied_value"]}
+    assert "email.html" in names
+
+
+def test_email_preflight_ready_without_toolchain():
+    pf = read_preflight("email")["value"]
+    # host-agnostic HTML: always ready, but warns to test cross-client (not a blocker)
+    assert pf["ready"] is True and pf["warnings"]
+
+
 def test_audit_flags_bad_button():
     r = audit.audit_source({"B.tsx": '<button className="transition-all"><svg/></button>'})
     ids = {f["id"] for f in r["findings"]}
