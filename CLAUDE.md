@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 A token-first UI design pipeline exposed as a **ProMCP-native** MCP server. It runs over
-`promcp==0.3.0.dev0`, which sits over `fastmcp>=3.4,<4`. The server helps an LLM design and
+`promcp>=0.3.0`, which sits over `fastmcp>=3.4,<4`. The server helps an LLM design and
 build UIs across three deterministic **paradigm verticals** — `web` (React + Tailwind v4 +
 shadcn/ui), `flutter-material` (Flutter/Material 3, Android), and `flutter-cupertino`
 (Flutter/Cupertino·HIG, iOS) — where design tokens are the single source of truth. A horizontal
@@ -23,8 +23,8 @@ stability layer (preflight, spec validation, diagnostics) makes builds fast and 
 ## Commands
 
 ```bash
-# Install (promcp is a pre-release, so --pre is required)
-pip install --pre "promcp==0.3.0.dev0" "fastmcp>=3.4,<4"
+# Install from source (end users use `uvx ultimate-ui-design-promcp` instead)
+pip install "promcp>=0.3.0,<0.4" "fastmcp>=3.4,<4"
 pip install playwright && playwright install chromium   # only for read_extracted_design_system
 
 python server.py                                    # run the server (stdio transport)

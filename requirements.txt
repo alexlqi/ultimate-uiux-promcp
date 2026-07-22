@@ -1,5 +1,4 @@
---pre
-promcp==0.3.0.dev0
+promcp>=0.3.0,<0.4
 fastmcp>=3.4,<4
 # optional (read_extracted_design_system only):
 # playwright>=1.40

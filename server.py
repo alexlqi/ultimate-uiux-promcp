@@ -9,7 +9,7 @@ directly — the only coupling boundary is promcp.transport, per ProMCP's archit
           └── promcp.transport adapter                       ← THIS file wires it
                 └── FastMCP (MCP plumbing)                   ← behind .raw
 
-Run: `python server.py`  (stdio)   |   requires promcp>=0.3.0.dev0, fastmcp>=3.4,<4.
+Run: `python server.py`  (stdio)   |   requires promcp>=0.3.0, fastmcp>=3.4,<4.
 Author: Alejandro Andrade (@alexlqi) — github.com/alexlqi
 """
 from __future__ import annotations

@@ -1,7 +1,7 @@
 # ultimate-ui-design — ProMCP server
 
 The token-first UI design pipeline, rebuilt as a **ProMCP-native** server on top of
-`promcp==0.3.0.dev0` (which sits over `fastmcp>=3.4,<4`). Where the plain-MCP version used
+`promcp>=0.3.0` (which sits over `fastmcp>=3.4,<4`). Where the plain-MCP version used
 FastMCP directly, this one speaks ProMCP's **triadic contract convention** end to end:
 
 - `can_do` — a **singleton** feasibility gate (`intent → candidates/blocked`, `feasible` auto-calculated).
@@ -67,8 +67,17 @@ or a mis-prefixed name, raises before the server can start.
 
 ## Install & run
 
+End users install nothing but [uv](https://docs.astral.sh/uv/); `uvx` fetches the published
+package and its deps into an isolated env:
+
 ```bash
-pip install --pre "promcp==0.3.0.dev0" "fastmcp>=3.4,<4"
+uvx ultimate-ui-design-promcp          # stdio transport
+```
+
+From source (development):
+
+```bash
+pip install "promcp>=0.3.0,<0.4" "fastmcp>=3.4,<4"
 # optional, only for read_extracted_design_system:
 pip install playwright && playwright install chromium
 
@@ -82,13 +91,14 @@ Tests: `PYTHONPATH=. python tests/test_core.py` (9 pass, incl. the clean-lint as
 {
   "mcpServers": {
     "ultimate-ui-design": {
-      "command": "python",
-      "args": ["/absolute/path/to/ultimate-ui-design-promcp/server.py"]
+      "command": "uvx",
+      "args": ["ultimate-ui-design-promcp"]
     }
   }
 }
 ```
-Or: `claude mcp add ultimate-ui-design -- python /absolute/path/to/server.py`
+Or: `claude mcp add uidesign -- uvx ultimate-ui-design-promcp`
+(from source: `claude mcp add uidesign -- python /absolute/path/to/server.py`)
 
 ## Token spec shape
 

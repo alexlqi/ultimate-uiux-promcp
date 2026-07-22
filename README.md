@@ -32,39 +32,74 @@ contrast is checked for you, and the output is the same every time you run it.
 
 ## Install
 
-Requires Python 3.10+.
+There's nothing to clone and no Python packages to manage. The one prerequisite is
+[**uv**](https://docs.astral.sh/uv/) — a single self-contained binary that pulls Python,
+`promcp`, and `fastmcp` into an isolated, cached environment for you:
 
 ```bash
-pip install --pre "promcp==0.3.0.dev0" "fastmcp>=3.4,<4"
+# Windows (PowerShell)
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
 
-# Optional — only needed if you want to extract tokens from a live website:
-pip install playwright && playwright install chromium
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-Then grab this repo and note the full path to `server.py`.
+That's the only thing you install. Everything else is handled by `uvx` at launch.
 
 ---
 
 ## Connect it to your client
 
-### Claude Code
+### Claude Code (recommended)
+
+One command — `uvx` fetches the package and all its dependencies automatically:
+
 ```bash
-claude mcp add ultimate-ui-design -- python /absolute/path/to/ultimate-ui-design-promcp/server.py
+claude mcp add uidesign -- uvx ultimate-ui-design-promcp
 ```
 
+Or just **ask Claude Code to do it for you**:
+
+> Add the ultimate-ui-design MCP server with `uvx ultimate-ui-design-promcp`.
+
 ### Claude Desktop (or any client using an `mcpServers` config)
+
 ```json
 {
   "mcpServers": {
     "ultimate-ui-design": {
-      "command": "python",
-      "args": ["/absolute/path/to/ultimate-ui-design-promcp/server.py"]
+      "command": "uvx",
+      "args": ["ultimate-ui-design-promcp"]
     }
   }
 }
 ```
 
-Restart your client and the tools appear automatically.
+Restart your client and the tools appear automatically. On first launch `uvx` downloads and
+caches the package; subsequent starts are instant.
+
+### Optional — live-site token extraction
+
+The `read_extracted_design_system` tool (reading tokens from a public website) needs Playwright.
+Pull it in via the `extract` extra and do the one-time browser download:
+
+```bash
+uvx --from "ultimate-ui-design-promcp[extract]" ultimate-ui-design-promcp
+# then, once, to fetch the headless browser binary:
+uvx --from "ultimate-ui-design-promcp[extract]" playwright install chromium
+```
+
+Everything else works without it.
+
+<details>
+<summary>Run from source instead (for development)</summary>
+
+```bash
+pip install "promcp>=0.3.0,<0.4" "fastmcp>=3.4,<4"
+python server.py   # stdio
+# register: claude mcp add uidesign -- python /absolute/path/to/server.py
+```
+</details>
 
 ---
 
