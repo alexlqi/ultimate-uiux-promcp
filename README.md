@@ -120,7 +120,11 @@ The assistant then runs the full token-first flow for you:
 4. **Tokens** — generates the theme files (and verifies contrast) — still in memory.
 5. **Write** — persists the files to your project (the one step that touches disk).
 6. **Components + motion** — builds UI that consumes *only* tokens, in every state.
-7. **Audit** — reviews the result against current UI guidelines.
+7. **Preview** — serves the output over a lightweight **local HTTP server** and opens it in your
+   browser. (Browsers block raw `file://` for ES modules, `fetch`, and relative assets, so a
+   `file://` preview renders broken — this serves `http://127.0.0.1:<port>/` instead. The server
+   is pinned per output directory, so re-previewing keeps the same URL; stop it with `stop=True`.)
+8. **Audit** — reviews the result against current UI guidelines.
 
 Prefer a review pass on existing UI? Use the **`audit_only`** prompt and point it at your
 component files.

@@ -17,6 +17,7 @@ from __future__ import annotations
 from promcp.linter import lint_registry
 from promcp.transport import ProMCPServer
 
+from ultimate_ui.health import harden_stdio_encoding
 from ultimate_ui.promcp_surface import registry
 
 INSTRUCTIONS = (
@@ -112,6 +113,7 @@ def _attach_knowledge_and_prompts(server: ProMCPServer) -> None:
 
 def lint() -> None:
     """Run the ProMCP linter over the domain registry and print results."""
+    harden_stdio_encoding()  # findings can contain the surface's Unicode (→ ∈ ←)
     results, global_findings = lint_registry(registry)
     n_err = sum(1 for r in results for f in r.findings if f.severity.name == "ERROR")
     n_warn = sum(1 for r in results for f in r.findings if f.severity.name == "WARNING")
@@ -124,6 +126,10 @@ def lint() -> None:
 
 
 def main() -> None:
+    # Host-awareness first: make our own stdout/stderr UTF-8 so the stdio server never
+    # dies emitting its own Unicode (INSTRUCTIONS/prompts carry "→ ∈ ←", emit_email
+    # emits arrows/bullets) on a locale-codepage host such as Windows cp1252.
+    harden_stdio_encoding()
     build_server().run()
 
 

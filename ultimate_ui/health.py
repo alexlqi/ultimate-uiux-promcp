@@ -21,7 +21,10 @@ import sys
 from ultimate_ui import contrast as _contrast
 from ultimate_ui import tokens as _tokens
 
-__all__ = ["PARADIGMS", "targets_for", "preflight", "validate_spec", "diagnostics"]
+__all__ = [
+    "PARADIGMS", "targets_for", "preflight", "validate_spec", "diagnostics",
+    "host_encoding", "harden_stdio_encoding",
+]
 
 # The three first-class verticals → the emitter targets each one owns. `flutter` (the
 # adaptive/combined emitter) is kept in the mobile paradigms for backward compatibility.
@@ -56,6 +59,99 @@ PARADIGMS: dict[str, dict] = {
 def targets_for(paradigm: str) -> list[str]:
     """Emitter targets a paradigm owns; [] for an unknown paradigm (caller decides)."""
     return list(PARADIGMS.get(paradigm, {}).get("targets", []))
+
+
+# ── host / console encoding awareness ────────────────────────────────────────
+# This server and its generated content are UTF-8: the instructions and prompts
+# carry "→ ∈ ←", and emit_email produces arrows "→", bullets "•", em-dashes "—",
+# and smart quotes. On a locale-codepage host — notably Windows, where sys.stdout
+# defaults to cp1252 — those glyphs cannot be encoded, so a naive print()/write of
+# either a server response or generated content raises UnicodeEncodeError and takes
+# the process down. We make the server host-aware in two ways: host_encoding()
+# OBSERVES the situation (reported by read_preflight/read_diagnostics), and
+# harden_stdio_encoding() defensively upgrades the server's own streams at startup.
+
+# A representative sample of the non-ASCII glyphs this server emits in content and
+# instructions; if the console can encode all of these, plain printing is safe.
+_EMITTED_GLYPHS = "→←∈•—·“”’…"
+
+
+def _stream_encoding(stream) -> str:
+    return getattr(stream, "encoding", None) or ""
+
+
+def _is_utf8(enc: str) -> bool:
+    return enc.lower().replace("-", "").replace("_", "").startswith("utf8")
+
+
+def host_encoding() -> dict:
+    """Observe the host console encoding and whether it can carry the glyphs this
+    server emits. Pure — reads sys.stdout/stderr, writes nothing, never raises.
+
+    `safe_for_emitted_content` is True iff the stdout encoding can encode every glyph
+    in _EMITTED_GLYPHS, i.e. a plain print()/write of generated content won't raise
+    UnicodeEncodeError on this host. When unsafe, `fix_hint` says exactly how to fix it.
+    """
+    out_enc = _stream_encoding(sys.stdout) or "unknown"
+    err_enc = _stream_encoding(sys.stderr) or "unknown"
+
+    unsafe: list[str] = []
+    for ch in _EMITTED_GLYPHS:
+        try:
+            ch.encode(out_enc)
+        except (UnicodeEncodeError, LookupError):
+            unsafe.append(ch)
+
+    report = {
+        "stdout_encoding": out_enc,
+        "stderr_encoding": err_enc,
+        "utf8": _is_utf8(out_enc),
+        "safe_for_emitted_content": not unsafe,
+        "unencodable_glyphs": unsafe,
+    }
+    if unsafe:
+        report["fix_hint"] = (
+            f"host console '{out_enc}' cannot encode glyphs this server emits ("
+            + "".join(unsafe) + "); the server hardens its OWN stdio at startup, but any "
+            "downstream code that print()s generated content on this host must do one of: "
+            "set PYTHONUTF8=1 (or PYTHONIOENCODING=utf-8) in the environment, call "
+            "sys.stdout.reconfigure(encoding='utf-8') early, or write bytes explicitly via "
+            "text.encode('utf-8')."
+        )
+    return report
+
+
+def harden_stdio_encoding() -> dict:
+    """Upgrade the server's own stdout/stderr to UTF-8 so it can never die emitting
+    its own Unicode (INSTRUCTIONS/prompts contain "→ ∈ ←") on a locale-codepage host
+    such as Windows cp1252. Call once at process start, BEFORE serving over stdio.
+
+    Idempotent and defensive: skips streams already UTF-8, and never raises if a stream
+    is absent (pythonw) or not reconfigurable (redirected/replaced). Reconfiguring the
+    text wrapper's encoding does not disturb the underlying binary buffer, so it is safe
+    even under the stdio JSON-RPC transport. Returns {reconfigured[], skipped[]}.
+    """
+    reconfigured: list[str] = []
+    skipped: list[str] = []
+    for name in ("stdout", "stderr"):
+        stream = getattr(sys, name, None)
+        if stream is None:
+            skipped.append(f"{name}: absent")
+            continue
+        enc = _stream_encoding(stream)
+        if _is_utf8(enc):
+            skipped.append(f"{name}: already {enc or 'utf-8'}")
+            continue
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            skipped.append(f"{name}: not reconfigurable ({enc or 'unknown'})")
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+            reconfigured.append(f"{name}: {enc or 'unknown'} -> utf-8")
+        except Exception as exc:  # never let hardening itself crash startup
+            skipped.append(f"{name}: reconfigure failed ({type(exc).__name__})")
+    return {"reconfigured": reconfigured, "skipped": skipped}
 
 
 # ── preflight / doctor ───────────────────────────────────────────────────────
@@ -116,6 +212,20 @@ def preflight(paradigm: str) -> dict:
                                  "macOS host (can build/run iOS)" if on_mac
                                  else "iOS build/run requires macOS + Xcode; token generation still works here",
                                  severity="warning"))
+
+    # Host console encoding — warning severity, host-wide (applies to every paradigm).
+    # Non-blocking for token generation, but the model/consumer must know: this server's
+    # content (email arrows/bullets/em-dashes, and its own instructions) is UTF-8, and a
+    # locale-codepage console (e.g. Windows cp1252) raises UnicodeEncodeError when naive
+    # code prints it. The server hardens its own stdio; downstream printers still need UTF-8.
+    henc = host_encoding()
+    checks.append(_check(
+        "console-encoding",
+        henc["safe_for_emitted_content"],
+        f"stdout={henc['stdout_encoding']} (encodes emitted glyphs)"
+        if henc["safe_for_emitted_content"] else henc["fix_hint"],
+        severity="warning",
+    ))
 
     blockers = [f"{c['name']}: {c['detail']}" for c in checks if not c["ok"] and c["severity"] == "blocker"]
     warnings = [f"{c['name']}: {c['detail']}" for c in checks if not c["ok"] and c["severity"] == "warning"]
@@ -267,6 +377,7 @@ def diagnostics(applied_ledger: dict | None = None) -> dict:
             "python": sys.version.split()[0],
             "platform": sys.platform,
             "playwright": _has_playwright(),
+            "console_encoding": host_encoding(),
         },
         "paradigms": {p: preflight(p)["ready"] for p in PARADIGMS},
         "ledger": {"total_writes": len(writes), "entries": writes},

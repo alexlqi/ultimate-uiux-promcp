@@ -45,3 +45,6 @@ yarn-error.log*
 # Claude
 .claude
 .mcp.json
+
+# Runtime output (lifecycle event log, generated token files)
+.uidesign/

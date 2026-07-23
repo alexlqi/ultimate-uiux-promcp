@@ -11,7 +11,9 @@ from ultimate_ui.promcp_surface import (
     registry, can_do, read_contrast, read_generated_tokens, do_write_token_files,
     read_preflight, read_spec_validation, read_diagnostics,
     read_lifecycle_state, do_lifecycle_transition, do_set_restriction_mode,
+    do_serve_preview,
 )
+import urllib.request
 
 
 def _iso_lifecycle():
@@ -93,6 +95,18 @@ def test_email_materialize_and_write():
     assert "email.html" in names
 
 
+def test_paradigm_selects_targets_when_none_given():
+    # Regression: working in the 'email' paradigm without an explicit targets list must
+    # emit email.html — not silently fall back to the web bundle (tailwind/shadcn only).
+    v = read_generated_tokens(_SPEC, paradigm="email")["value"]
+    assert "email.html" in v
+    assert "app.css (tailwind v4 @theme)" not in v  # web bundle must NOT leak in
+    d = tempfile.mkdtemp()
+    r = do_write_token_files(_SPEC, d, idempotency_key="empar1", paradigm="email")
+    names = {p.rsplit("\\", 1)[-1].rsplit("/", 1)[-1] for p in r["applied_value"]}
+    assert "email.html" in names and "shadcn.css" not in names
+
+
 def test_email_preflight_ready_without_toolchain():
     pf = read_preflight("email")["value"]
     # host-agnostic HTML: always ready, but warns to test cross-client (not a blocker)
@@ -123,6 +137,75 @@ def test_read_contract_shape():
 def test_generated_tokens_includes_contrast_selfcheck():
     v = read_generated_tokens(_SPEC, targets=["shadcn"])["value"]
     assert "shadcn.css (:root/.dark)" in v and "_contrast_check" in v
+
+
+def test_generation_fails_gracefully_on_wrong_spec_shape():
+    # The exact shape that used to raise a bare KeyError('light') at the first step:
+    # colors under 'palette'/'brand' with a 'mode' string, no 'light' role→hex map.
+    wrong = {"name": "x", "mode": "light", "brand": {"accent": "#00E5A0"},
+             "palette": {"bg": "#FBFBFD", "fg": "#0E1017"}}
+    r = read_generated_tokens(wrong, targets=["css"])
+    assert r["quality"] == "error"
+    rep = r["value"]
+    assert rep["error"] == "invalid_spec"
+    # the hint must name the offending vocabulary and point at the real contract
+    assert set(rep["unrecognized_keys"]) >= {"palette", "mode", "brand"}
+    assert "light" in rep["expected"] and "hint" in rep
+    # and the persist action must reject cleanly — no traceback, nothing written
+    d = tempfile.mkdtemp()
+    w = do_write_token_files(wrong, d, idempotency_key="bad1", targets=["css"])
+    assert w["status"] == "failed" and w["applied_value"] == []
+    assert not list(Path(d).iterdir())  # nothing written
+    # a corrected retry with the SAME key must be allowed (rejection was not cached)
+    w2 = do_write_token_files(_SPEC, d, idempotency_key="bad1", targets=["css"])
+    assert w2["status"] == "success" and list(Path(d).iterdir())
+
+
+def test_empty_light_map_is_rejected_not_crashed():
+    r = read_generated_tokens({"name": "e", "light": {}}, targets=["css"])
+    assert r["quality"] == "error" and r["value"]["error"] == "invalid_spec"
+
+
+def test_serve_preview_uses_local_http_not_file_url():
+    ps._PREVIEW_APPLIED.clear(); ps._PREVIEW_SERVERS.clear()
+    d = tempfile.mkdtemp()
+    do_write_token_files(_SPEC, d, idempotency_key="pv0", paradigm="email")
+    r = do_serve_preview(d, idempotency_key="pv1", open_browser=False)
+    assert r["status"] == "success"
+    url = r["applied_value"]["url"]
+    assert url.startswith("http://127.0.0.1:")   # a real local server, never file://
+    assert "file://" not in url
+    assert url.endswith("email.html")            # points at the landing page, not a dir listing
+    # the server actually serves the bytes
+    body = urllib.request.urlopen(url, timeout=5).read().decode("utf-8")  # noqa: S310 (localhost)
+    assert "<" in body and "html" in body.lower()
+    do_serve_preview(d, idempotency_key="pv-stop", stop=True, open_browser=False)
+
+
+def test_serve_preview_is_pinned_per_directory():
+    ps._PREVIEW_APPLIED.clear(); ps._PREVIEW_SERVERS.clear()
+    d = tempfile.mkdtemp()
+    do_write_token_files(_SPEC, d, idempotency_key="pin-w", targets=["css"])
+    first = do_serve_preview(d, idempotency_key="pin1", open_browser=False)["applied_value"]
+    second = do_serve_preview(d, idempotency_key="pin2", open_browser=False)["applied_value"]
+    # same dir → same pinned server + port, not a second bind
+    assert second["reused_pinned_server"] is True
+    assert first["port"] == second["port"]
+    assert len(ps._PREVIEW_SERVERS) == 1
+    # stop is compensable and reversible
+    stopped = do_serve_preview(d, idempotency_key="pin-stop", stop=True, open_browser=False)
+    assert stopped["applied_value"]["stopped"] is True
+    assert ps._PREVIEW_SERVERS == {}
+
+
+def test_serve_preview_rejects_missing_dir_and_gate():
+    ps._PREVIEW_APPLIED.clear(); ps._PREVIEW_SERVERS.clear()
+    missing = str(Path(tempfile.mkdtemp()) / "nope")
+    r = do_serve_preview(missing, idempotency_key="miss1", open_browser=False)
+    assert r["status"] == "failed" and not ps._PREVIEW_SERVERS
+    # can_do gates the same precondition
+    intent = {"semantic_tags": ["serve_preview"], "context": {"output_dir": missing}}
+    assert can_do(intent)["blocked"][0]["capability"] == "serve_preview"
 
 
 def test_do_is_idempotent_and_compensable():

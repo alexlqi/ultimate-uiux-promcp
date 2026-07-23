@@ -42,6 +42,11 @@ class TokenSpec:
 
     @staticmethod
     def from_dict(d: dict) -> "TokenSpec":
+        if not isinstance(d, dict) or not isinstance(d.get("light"), dict) or not d["light"]:
+            raise ValueError(
+                "token spec must be an object with a non-empty 'light' role→hex map "
+                "(e.g. {'light': {'bg': '#fff', 'fg': '#111', 'brand': '#2f6bff'}})"
+            )
         return TokenSpec(
             name=d.get("name", "app"),
             light=d["light"], dark=d.get("dark", d["light"]),
