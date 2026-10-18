@@ -47,12 +47,25 @@ grep `.raw` to audit transport coupling, exactly as ProMCP intends.
 
 **Tools** (exposed with canonical prefixes)
 - `can_do(intent, scope?)` — gate for: extract_design_system, write_token_files,
-  generate_tokens, audit_ui, check_contrast.
+  generate_tokens, audit_ui, render_qa, style_lookup, import_design_md, check_contrast (+ the
+  stability and lifecycle gates).
 - `read_design_reference(stage)` · `read_web_guidelines()` · `read_contrast(fg, bg, large?)`
   · `read_ui_audit(files)` · `read_generated_tokens(spec, targets?)` · `read_extracted_design_system(url)`
 - `do_write_token_files(spec, output_dir, idempotency_key, targets?)`
 
-The four paradigm verticals (`web`, `flutter-material`, `flutter-cupertino`, `email`) are the
+**Ecosystem integrations** (all `read_*`, all pure observations — none of them writes anything):
+
+| Source | Module | Tools | Notes |
+| --- | --- | --- | --- |
+| taste-skill (MIT) | `styles.py` + `brief.py` + `data/*.json` (bundled) | `read_design_brief` (composite),  `read_style_directions`, `read_palette_suggestions`, `read_type_systems`, `read_blueprints` | palettes get measured contrast + a `spec_seed`; `audit.py` carries the mechanical `tell-*` rules; judgment half is the `taste` stage |
+| vercel-labs/agent-skills (MIT) | `skillrules.py`, `audit.py` | `read_agent_skill_rule` (bundled, offline; `rule=''` → full skill index; also react-view-transitions references) | allowlisted skills + strict slug → fixed raw URL; `react-*`/`rn-*` audit rules; `react`, `react-native` stages |
+| awesome-design-md (MIT) | `designmd.py` | `read_design_md_catalog`, `read_design_md` | tolerant parser for both upstream formats (front matter / markdown); output is the same TokenSpec seed shape as extraction; bundled brand list is the offline fallback |
+| Playwright (Apache-2.0) | `extract.py` (seed tokens in), `render.py` (QA out) | `read_extracted_design_system` (+ type scale, spacing grid, DESIGN.md export), `read_rendered_audit`, `do_capture_screenshots` (the only Playwright mutation: idempotent, compensable) | optional dependency; absence is structured data (`can_do render_qa`) |
+
+Network reads are fixed-host (`raw.githubusercontent.com`, `api.github.com`) with validated slugs;
+the render audit only opens http(s) URLs or an existing local file and never writes or clicks.
+
+The five paradigm verticals (`web`, `flutter-material`, `flutter-cupertino`, `react-native`, `email`) are the
 unit of vertical determinism; `health.PARADIGMS` maps each to its emitter targets and role
 expectations, and `read_generated_tokens`/`do_write_token_files` select emitters by `targets`
 (email → `email.html`, a bulletproof cross-client HTML newsletter).
@@ -65,7 +78,7 @@ expectations, and `read_generated_tokens`/`do_write_token_files` select emitters
 The server ships a linter pass over its own registry:
 ```bash
 PYTHONPATH=. python -c "from server import lint; lint()"
-# ProMCP lint: 14 tools, 0 errors, 0 warnings
+# ProMCP lint: 25 tools, 0 errors, 0 warnings
 # (one tolerated global S004 advisory — the stability + lifecycle layers intentionally exceed 8 tools)
 ```
 Contracts are validated at **decoration time** (fail-fast): a `do_*` without `idempotency_key`,

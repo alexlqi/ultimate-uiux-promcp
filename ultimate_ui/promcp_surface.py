@@ -28,10 +28,15 @@ from promcp import can_do_tool, do_tool, read_tool
 from promcp.registry import Registry
 
 from ultimate_ui import audit as _audit
+from ultimate_ui import brief as _brief
 from ultimate_ui import contrast as _contrast
+from ultimate_ui import designmd as _designmd
 from ultimate_ui import extract as _extract
 from ultimate_ui import health as _health
 from ultimate_ui import lifecycle as _lifecycle
+from ultimate_ui import render as _render
+from ultimate_ui import skillrules as _skillrules
+from ultimate_ui import styles as _styles
 from ultimate_ui import tokens as _tokens
 
 # Dedicated registry (not the global default) so this surface is independently lintable.
@@ -44,6 +49,8 @@ _STAGES = {
     "audit": "web-guidelines.md", "web-stack": "web-stack.md", "flutter": "flutter.md",
     "flutter-material": "flutter-material.md", "flutter-cupertino": "flutter-cupertino.md",
     "email": "email.md", "lifecycle": "lifecycle.md",
+    "taste": "taste.md", "react": "react-practices.md", "react-native": "react-native.md",
+    "design-md": "design-md.md", "render-qa": "render-qa.md",
 }
 
 # Capabilities the can_do gate reasons about, with their precondition checks.
@@ -54,6 +61,10 @@ _CAPABILITIES = {
     "serve_preview":         lambda ctx: Path(ctx.get("output_dir", ".")).is_dir(),
     "generate_tokens":       lambda ctx: bool(ctx.get("has_required_roles", True)),
     "audit_ui":              lambda ctx: True,
+    # rendered QA needs a browser; style/brand lookups are pure or degrade to bundled data
+    "render_qa":             lambda ctx: _extract.playwright_available(),
+    "style_lookup":          lambda ctx: True,
+    "import_design_md":      lambda ctx: True,
     "check_contrast":        lambda ctx: True,
     # horizontal stability gates: a mobile/web build is feasible when its toolchain is ready
     "build_paradigm":        lambda ctx: _health.preflight(ctx.get("paradigm", "web"))["ready"],
@@ -89,7 +100,7 @@ def _writable(path: str) -> bool:
         "Check feasibility of an intended UI-pipeline capability before acting. "
         "intent = {'semantic_tags': [<capability>...], optional 'context': {...}}. "
         "Capabilities: extract_design_system, write_token_files, serve_preview, generate_tokens, "
-        "audit_ui, check_contrast, build_paradigm, validate_spec, diagnostics, modify_layout, lock_layout. "
+        "audit_ui, render_qa, style_lookup, import_design_md, check_contrast, build_paradigm, validate_spec, diagnostics, modify_layout, lock_layout. "
         "For modify_layout/lock_layout pass context {'layout_id','paradigm'}; a locked layout is "
         "reported blocked with the change-paths to unlock/branch/amend. Call before "
         "do_write_token_files or do_lifecycle_transition when a precondition is uncertain."
@@ -113,7 +124,7 @@ def can_do(intent: dict, scope: list = None) -> dict:
                                "valid_until": _iso_in(300)})
         else:
             extra = {}
-            if tag == "extract_design_system":
+            if tag in ("extract_design_system", "render_qa"):
                 reason = "Playwright not installed (pip install playwright && playwright install chromium)"
             elif tag == "serve_preview":
                 reason = (f"output_dir '{ctx.get('output_dir', '.')}' is not a directory — "
@@ -154,7 +165,10 @@ def _iso_in(seconds: int) -> str:
     description=("Read the design-knowledge reference for a pipeline stage. Stages: "
                  "intelligence, tokens, brand, extract, image-to-code, motion, audit, "
                  "web-stack, flutter (adaptive), flutter-material (Android/MD3), "
-                 "flutter-cupertino (iOS/HIG), email (bulletproof HTML email). Read the "
+                 "flutter-cupertino (iOS/HIG), email (bulletproof HTML email), taste (anti-slop "
+                 "art direction), react (Vercel React/Next rules + composition + view "
+                 "transitions), react-native (Expo/RN rules), design-md (brand DESIGN.md "
+                 "references), render-qa (Playwright viewport QA). Read the "
                  "stage before building it. Not for live web data."),
     registry=registry,
 )
@@ -199,6 +213,151 @@ def read_ui_audit(files: dict) -> dict:
 
 
 @read_tool(
+    description=("Rank curated ART DIRECTIONS (from taste-skill) by fit to a sector and tone: each "
+                 "returns the idea, composition, type classes, palette tags, imagery, motion and "
+                 "pitfalls. sector e.g. saas|finance|ecommerce|health|education|hospitality|"
+                 "agency|dev-tool|consumer-app...; tone in bold|editorial|luxury|playful|quiet|"
+                 "technical|warm. Call with no args to see the vocabulary. Pick ONE direction, then "
+                 "read_palette_suggestions with its paletteTags."),
+    registry=registry,
+)
+def read_style_directions(sector: str = "", tone: str = "", limit: int = 5) -> dict:
+    return {"value": _styles.style_directions(sector, tone, limit)}
+
+
+@read_tool(
+    description=("Palette suggestions (from taste-skill) filtered by tags (dark-neutral, light-neutral, "
+                 "mono-accent, two-tone, earth, flat-loud, pastel-fields, single-field, "
+                 "photographic-neutral). Every palette ships MEASURED WCAG+APCA contrast and a "
+                 "spec_seed you can pass to read_spec_validation. accessible_only (default true) "
+                 "drops palettes whose body text or CTA label fails WCAG AA."),
+    unit="wcag_ratio+apca_Lc",
+    registry=registry,
+)
+def read_palette_suggestions(tags: list = None, limit: int = 5, accessible_only: bool = True) -> dict:
+    rep = _styles.palette_suggestions(tags, limit, accessible_only)
+    return {"value": rep, "quality": "good" if rep["palettes"] else "degraded"}
+
+
+@read_tool(
+    description=("List the brands that have a DESIGN.md in awesome-design-md (Stripe, Linear, Apple, "
+                 "Vercel, Supabase, Notion, Spotify...). Live read; quality=degraded when it falls "
+                 "back to the bundled snapshot."),
+    registry=registry,
+)
+def read_design_md_catalog() -> dict:
+    rep = _designmd.list_brands()
+    return {"value": rep, "quality": "good" if rep["source"] == "live" else "degraded"}
+
+
+@read_tool(
+    description=("ONE-CALL design brief: sector + tone + paradigm (web|flutter-material|flutter-cupertino|"
+                 "react-native|email) -> a committed direction, a measured accessible palette, a type system, hero + "
+                 "section blueprints and a token-spec seed already run through the paradigm's validation "
+                 "gate, with paradigm-specific notes. Deterministic. Start here, then read_generated_tokens "
+                 "and persist via the do_ action. Pass direction to override the ranked pick."),
+    registry=registry,
+)
+def read_design_brief(sector: str = "", tone: str = "", paradigm: str = "web", name: str = "app",
+                      direction: str = "") -> dict:
+    try:
+        rep = _brief.design_brief(sector, tone, paradigm, name, direction)
+    except ValueError as exc:
+        return {"value": {"error": str(exc)}, "quality": "error"}
+    return {"value": rep, "quality": "good" if rep["validation"]["valid"] else "degraded"}
+
+
+@read_tool(
+    description=("Dealt TYPE SYSTEMS (from taste-skill): display + text faces with weights, free CDN "
+                 "links, the real fonts they stand in for, and a <=5-step fluid clamp() scale. Filter "
+                 "by type_classes (a direction's typeClasses), e.g. grotesk-tight, serif-display, "
+                 "heavy-black, geometric, slab. Call with no args for the class vocabulary."),
+    registry=registry,
+)
+def read_type_systems(type_classes: list = None, limit: int = 5) -> dict:
+    return {"value": _styles.type_systems(type_classes, limit)}
+
+
+@read_tool(
+    description=("Composition BLUEPRINTS (from taste-skill) for a chosen art direction: kind='hero' gives "
+                 "first-screen layouts (viewport geometry, mobile re-flow, headline rule, motion); "
+                 "kind='section' gives per-role sections (role in features|pricing|proof|faq|cta|"
+                 "gallery|stats|how-it-works|...) so no two sections share a layout family. "
+                 "direction = a read_style_directions id."),
+    registry=registry,
+)
+def read_blueprints(kind: str = "section", direction: str = "", role: str = "", limit: int = 5) -> dict:
+    try:
+        return {"value": _styles.blueprints(kind, direction, role, limit)}
+    except ValueError as exc:
+        return {"value": {"error": str(exc)}, "quality": "error"}
+
+
+@read_tool(
+    description=("Fetch a brand's DESIGN.md (live) and normalize it into a token-spec seed: colors to "
+                 "roles (bg/fg/brand/on-brand/muted-fg/border), radii, font, plus measured contrast "
+                 "and the brand's native light/dark mode. Use as a REFERENCE for system structure "
+                 "(accent discipline, type contrast, depth), not to clone a brand. Heuristic role "
+                 "mapping - validate with read_spec_validation. brand = slug from "
+                 "read_design_md_catalog, e.g. 'stripe', 'linear.app'."),
+    registry=registry,
+)
+def read_design_md(brand: str) -> dict:
+    try:
+        text = _designmd.fetch_design_md(brand)
+    except ValueError as exc:
+        return {"value": {"error": str(exc)}, "quality": "error"}
+    except Exception as exc:
+        return {"value": {"error": f"fetch failed: {type(exc).__name__}: {exc}",
+                          "hint": "check the slug with read_design_md_catalog, or the network"},
+                "quality": "error"}
+    parsed = _designmd.parse_design_md(text)
+    seed = _designmd.to_spec_seed(parsed, brand)
+    return {"value": {"brand": brand, "format": parsed["format"], "document": text, **seed},
+            "quality": "good" if "spec_seed" in seed else "degraded"}
+
+
+@read_tool(
+    description=("Read one Vercel agent-skills rule (bundled snapshot of ALL rules, live fallback) with its incorrect/correct code "
+                 "examples. skill in react-best-practices|composition-patterns|react-native-skills|react-view-transitions; rule='' returns the skill index (ALL rules); "
+                 "rule = id from the react / react-native knowledge stage, e.g. 'async-parallel', "
+                 "'bundle-barrel-imports', 'list-performance-virtualize'."),
+    registry=registry,
+)
+def read_agent_skill_rule(skill: str, rule: str = "") -> dict:
+    try:
+        return {"value": _skillrules.fetch_rule(skill, rule)}
+    except ValueError as exc:
+        return {"value": {"error": str(exc)}, "quality": "error"}
+    except Exception as exc:
+        return {"value": {"error": f"fetch failed: {type(exc).__name__}: {exc}"}, "quality": "error"}
+
+
+@read_tool(
+    description=("Render a build in headless Chromium (Playwright) at mobile 375 / tablet 768 / desktop "
+                 "1280 and report what the browser did: horizontal overflow, console errors, failed "
+                 "requests, controls/images without accessible names, undersized touch targets, "
+                 "heading structure, and computed-style text contrast against the real effective "
+                 "background. target = http(s) URL or a local file (e.g. the generated email.html). "
+                 "viewports optionally limits to any of [mobile, tablet, desktop]. Observation only. Needs "
+                 "Playwright - check can_do(['render_qa'])."),
+    registry=registry,
+)
+def read_rendered_audit(target: str, viewports: list = None) -> dict:
+    try:
+        rep = _render.render_audit(target, viewports)
+    except ValueError as exc:
+        return {"value": {"error": str(exc)}, "quality": "error"}
+    except Exception as exc:
+        return {"value": {"error": f"render failed: {type(exc).__name__}: {exc}",
+                          "hint": "is the URL reachable? is Chromium installed (playwright install chromium)?"},
+                "quality": "error"}
+    if "error" in rep:
+        return {"value": rep, "quality": "error"}
+    return {"value": rep, "quality": "good" if not rep["counts"]["Critical"] else "degraded"}
+
+
+@read_tool(
     description=("Materialize a token spec into file TEXT in-memory (returned as a value, never "
                  "touching disk): DTCG tokens.json, tokens.css, Tailwind v4 @theme, shadcn "
                  ":root/.dark, and three Flutter verticals — 'flutter' (adaptive), "
@@ -207,8 +366,8 @@ def read_ui_audit(files: dict) -> dict:
                  "44-pt targets, AppTokensScope), and 'email' (bulletproof responsive HTML email: "
                  "XHTML doctype, table layout, MSO ghost tables + VML button, prefers-color-scheme + "
                  "[data-ogsc] dark mode, CAN-SPAM/GDPR footer). targets from {dtcg,css,tailwind,shadcn,"
-                 "flutter,flutter-material,flutter-cupertino,email}. If targets is omitted, pass "
-                 "paradigm ∈ {web,flutter-material,flutter-cupertino,email} to emit exactly that "
+                 "flutter,flutter-material,flutter-cupertino,react-native,email}. If targets is omitted, pass "
+                 "paradigm ∈ {web,flutter-material,flutter-cupertino,react-native,email} to emit exactly that "
                  "vertical's files (e.g. paradigm='email' → email.html); with neither, defaults to the "
                  "web + adaptive bundle. "
                  "Includes a full light+dark contrast self-check. To persist, hand the result to the do_* action."),
@@ -242,7 +401,7 @@ def read_extracted_design_system(url: str) -> dict:
 
 @read_tool(
     description=("Preflight/doctor for a build paradigm: is its toolchain present? paradigm ∈ "
-                "{web, flutter-material, flutter-cupertino, email}. Returns {ready, checks, blockers, "
+                "{web, flutter-material, flutter-cupertino, react-native, email}. Returns {ready, checks, blockers, "
                 "warnings} — blockers stop a real build, warnings degrade (e.g. iOS build tools "
                 "absent off macOS; email needs no toolchain but warns to verify in Litmus/Email on "
                 "Acid). Run before scaffolding a stack."),
@@ -257,7 +416,7 @@ def read_preflight(paradigm: str = "web") -> dict:
 @read_tool(
     description=("Validate a token spec BEFORE persisting it (fault-tolerance gate). Checks required "
                 "roles exist and parse, colors are valid sRGB, dark mode present, soft-role fallbacks, "
-                "and AA/APCA contrast — per paradigm {web, flutter-material, flutter-cupertino, email}. Returns "
+                "and AA/APCA contrast — per paradigm {web, flutter-material, flutter-cupertino, react-native, email}. Returns "
                 "{valid, errors, warnings, summary}. On errors ⇒ do NOT persist yet (skip the do_ action)."),
     registry=registry,
 )
@@ -315,6 +474,7 @@ def read_lifecycle_state(layout_id: str = None, paradigm: str = None) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 # do_* — mutations (idempotency + compensation)
 # ─────────────────────────────────────────────────────────────────────────────
+_SHOT_APPLIED: dict[str, dict] = {}  # capture-screenshots idempotency ledger: key -> result
 _APPLIED: dict[str, dict] = {}       # token-write idempotency ledger: key -> result
 _TRANSITIONS: dict[str, dict] = {}   # lifecycle-transition idempotency ledger: key -> result
 _MODE_APPLIED: dict[str, dict] = {}  # set-restriction-mode idempotency ledger: key -> result
@@ -454,6 +614,7 @@ def do_write_token_files(
         "app_theme.dart": "app_theme.dart",
         "app_theme.dart (material 3 / android)": "app_theme_material.dart",
         "app_theme.dart (cupertino / ios)": "app_theme_cupertino.dart",
+        "theme.ts (react native / expo)": "theme.ts",
         "email.html": "email.html",
     }
     previously = sorted(str(p) for p in out.iterdir()) if out.exists() else []
@@ -809,7 +970,35 @@ def _materialize(spec: dict, targets, paradigm=None) -> dict:
         out["app_theme.dart (material 3 / android)"] = _tokens.emit_flutter_material(ts)
     if "flutter-cupertino" in targets:
         out["app_theme.dart (cupertino / ios)"] = _tokens.emit_flutter_cupertino(ts)
+    if "react-native" in targets:
+        out["theme.ts (react native / expo)"] = _tokens.emit_react_native(ts)
     if "email" in targets:
         out["email.html"] = _tokens.emit_email(ts)
     out["_contrast_check"] = _token_contrast(spec)
     return out
+
+
+@do_tool(
+    description=("Render a URL or local HTML file in headless Chromium (Playwright) and WRITE one PNG "
+                 "per viewport (mobile 375 / tablet 768 / desktop 1280) into output_dir, for visual "
+                 "review or to attach to a PR. Idempotent by key; compensable by deleting the PNGs. "
+                 "Gate with can_do(['render_qa'])."),
+    compensable=True,
+    side_effects=["screenshots_written"],
+    compensation_hint_template="rm -f {written_files}",
+    registry=registry,
+)
+def do_capture_screenshots(target: str, output_dir: str, idempotency_key: str,
+                           viewports: list = None, full_page: bool = True) -> dict:
+    if idempotency_key in _SHOT_APPLIED:
+        return _SHOT_APPLIED[idempotency_key]
+    try:
+        written = _render.capture_screenshots(target, output_dir, viewports, full_page)
+    except Exception as exc:  # nothing (or a partial set) written; report, never traceback
+        return {"status": "failed", "applied_value": [], "previous_value": [],
+                "compensation_hint": f"no screenshots recorded: {type(exc).__name__}: {exc}"}
+    _log("screenshots_written", {"target": target, "files": written})
+    result = {"status": "success", "applied_value": written, "previous_value": [],
+              "compensation_hint": "rm -f " + " ".join(written)}
+    _SHOT_APPLIED[idempotency_key] = result
+    return result

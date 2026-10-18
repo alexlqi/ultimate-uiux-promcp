@@ -14,10 +14,11 @@ contrast is checked for you, and the output is the same every time you run it.
 
 ## What you get
 
-- **Four build targets ("paradigms"), one workflow**
+- **Five build targets ("paradigms"), one workflow**
   - `web` — React + Tailwind v4 + shadcn/ui
   - `flutter-material` — Flutter / Material 3 (Android)
   - `flutter-cupertino` — Flutter / Cupertino · HIG (iOS)
+  - `react-native` — React Native / Expo (typed `theme.ts` + `useTokens()` hook, 44pt/48dp touch floor)
   - `email` — bulletproof responsive HTML email (Outlook/Gmail/Apple Mail · dark mode · CAN-SPAM)
 - **Tokens as the single source of truth** — one design decision generates deterministic,
   diff-able theme files. Same input → same output, every time.
@@ -25,7 +26,26 @@ contrast is checked for you, and the output is the same every time you run it.
 - **Extract from any live site** — point it at a public URL and it reads the *computed* styles
   into a token spec you can reuse.
 - **Design audit** — run your components against the live Web Interface Guidelines and get
-  `file:line` findings.
+  `file:line` findings, including *taste tells* (gradient text, violet gradients, glass, eyebrows,
+  emoji icons…) and Vercel React/React-Native rules (fetch-in-effect, barrel imports, index keys,
+  clickable divs, `ScrollView.map`…).
+- **Taste, with numbers** — curated art directions and palettes (from
+  [taste-skill](https://github.com/Leonxlnx/taste-skill)): pick a direction for your sector and
+  tone, get palettes with measured WCAG/APCA contrast and a ready-to-validate token seed.
+- **Learn from documented brands** — pull a brand's `DESIGN.md` from
+  [awesome-design-md](https://github.com/VoltAgent/awesome-design-md) (Stripe, Linear, Apple,
+  Vercel, Supabase… ~84 brands) and get a token-spec seed to adapt.
+- **One call to a validated starting point** — `read_design_brief(sector, tone, paradigm)` chains
+  direction → palette → type → blueprints into a spec already checked for web, Android, iOS or email.
+- **App code audited too** — Dart rules for the Flutter verticals (hardcoded `Color(0x…)`, `Colors.red`,
+  non-lazy `ListView`, undersized tap targets, images without semantics) next to the web/React Native rules.
+- **Deeper than a palette** — dealt type systems (faces, free CDN links, fluid scale), hero and
+  per-role section blueprints keyed to your art direction, so sections don't all share one layout.
+- **See what the browser sees** — [Playwright](https://github.com/microsoft/playwright) renders
+  your build (URL, local file, even the generated `email.html`) at phone/tablet/desktop and
+  reports overflow, console errors, contrast and touch-target problems; it can also save
+  PNG screenshots per viewport (the one extra step that writes to disk, and it's reversible).
+  Site extraction now includes the type scale, spacing grid and a ready-to-commit `DESIGN.md`.
 - **Safe by design** — the model can generate and preview everything, but only **one** action
   ever writes to disk, and it's reversible.
 
@@ -79,9 +99,10 @@ Or just **ask Claude Code to do it for you**:
 Restart your client and the tools appear automatically. On first launch `uvx` downloads and
 caches the package; subsequent starts are instant.
 
-### Optional — live-site token extraction
+### Optional — live-site extraction and rendered QA
 
-The `read_extracted_design_system` tool (reading tokens from a public website) needs Playwright.
+`read_extracted_design_system` (reading tokens from a public website) and `read_rendered_audit`
+(rendering your build at three viewports) need Playwright.
 Pull it in via the `extract` extra and do the one-time browser download:
 
 ```bash
@@ -178,7 +199,12 @@ Writing is the only action that changes disk, it's opt-in, and it's reversible �
 reports exactly which files it created so they can be removed if you change your mind.
 
 **Do I need Playwright?**
-Only for the "extract tokens from a live website" feature. Everything else works without it.
+Only for "extract tokens from a live website" and the rendered viewport audit. Everything else
+works without it (and `can_do(['render_qa'])` tells you if it's available).
+
+**Does it copy brands?**
+No. `read_design_md` is a *reference*: it shows how a documented system handles accent, type and
+depth, and seeds tokens you then adapt. Don't ship someone else's trademarks or licensed fonts.
 
 **Can I use it without the prompts?**
 Yes. The prompts are just a guided path; you can ask for any single step (generate tokens,

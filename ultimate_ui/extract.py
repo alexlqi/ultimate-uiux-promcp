@@ -30,7 +30,15 @@ _JS = r"""
     if (s.boxShadow && s.boxShadow !== 'none') bump(shadows, s.boxShadow);
     for (const p of [s.paddingTop, s.paddingLeft, s.marginTop, s.gap]) bump(spaces, p);
   }
-  return { colors, bgs, fonts, sizes, radii, shadows, spaces };
+  const typo = {};
+  for (const el of document.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,a,button,label,small,code')) {
+    const r = el.getBoundingClientRect(); if (!r.width || !el.textContent.trim()) continue;
+    const s = getComputedStyle(el), k = el.tagName.toLowerCase();
+    const row = typo[k] || (typo[k] = { n: 0, size: s.fontSize, weight: s.fontWeight,
+      lh: s.lineHeight, ls: s.letterSpacing, family: s.fontFamily });
+    row.n++;
+  }
+  return { colors, bgs, fonts, sizes, radii, shadows, spaces, typo };
 }
 """
 
@@ -87,6 +95,62 @@ def _merge_near(counter: collections.Counter, dist: int = 10):
     return kept
 
 
+def _px(v) -> float | None:
+    m = re.match(r"\s*(-?[\d.]+)px", str(v))
+    return float(m.group(1)) if m else None
+
+
+def _type_scale(typo: dict) -> list[dict]:
+    """Per-element typography as the browser computed it, largest first."""
+    rows = []
+    for tag, r in typo.items():
+        size, lh, ls = _px(r["size"]), _px(r["lh"]), _px(r["ls"])
+        rows.append({
+            "tag": tag, "size_px": size, "weight": r["weight"], "count": r["n"],
+            "line_height": round(lh / size, 2) if lh and size else None,
+            "tracking_em": round(ls / size, 3) if ls is not None and size else None,
+            "family": r["family"].split(",")[0].strip(" \"'"),
+        })
+    return sorted(rows, key=lambda x: -(x["size_px"] or 0))
+
+
+def _spacing_scale(spaces: dict) -> dict:
+    """Distinct px spacing values (>0) and the dominant base unit (4 or 8) that explains them."""
+    vals = sorted({round(_px(k)) for k in spaces if _px(k) and 0 < _px(k) <= 256})
+    base = max((4, 8), key=lambda b: (sum(1 for v in vals if v % b == 0), b)) if vals else None  # ties → 8
+    on_grid = round(sum(1 for v in vals if base and v % base == 0) / len(vals), 2) if vals else None
+    return {"values_px": vals[:24], "base_unit": base, "on_grid_ratio": on_grid}
+
+
+def to_design_md(result: dict) -> str:
+    """Render an extraction as a DESIGN.md (awesome-design-md shape) so it round-trips through
+    designmd.parse_design_md and can be committed next to the tokens."""
+    summ, seed = result["summary"], result["token_spec_seed"]
+    light = seed["light"]
+    colors = {"canvas": light.get("bg"), "ink": light.get("fg"), "primary": light.get("brand")}
+    for i, hx in enumerate(summ.get("palette", [])):
+        colors.setdefault(f"extra-{i + 1}", hx)
+    lines = ["---", "version: alpha", f"name: {seed['name']}-extracted",
+             f"description: Computed-style extraction of {result['url']}", "", "colors:"]
+    lines += [f'  {k}: "{v}"' for k, v in colors.items() if v]
+    lines += ["", "typography:"]
+    for r in result.get("type_scale", [])[:8]:
+        lines += [f"  {r['tag']}:", f"    fontFamily: {r['family']}", f"    fontSize: {r['size_px']:g}px",
+                  f"    fontWeight: {r['weight']}"]
+        if r["line_height"]:
+            lines.append(f"    lineHeight: {r['line_height']}")
+        if r["tracking_em"] is not None:
+            lines.append(f"    letterSpacing: {r['tracking_em']}em")
+    if summ.get("radii"):
+        lines += ["", "rounded:"]
+        lines += [f"  {n}: {rad.split()[0]}" for n, rad in zip(["sm", "md", "lg", "xl"], summ["radii"])]
+    lines += ["", "spacing:"]
+    lines += [f"  s{v}: {v}px" for v in result.get("spacing_scale", {}).get("values_px", [])[:12]]
+    lines += ["---", "", f"# {seed['name']} (extracted)", "",
+              "Heuristic extraction from the live DOM; review roles before adopting.", ""]
+    return "\n".join(lines)
+
+
 def extract_tokens(url: str, timeout_ms: int = 20000) -> dict:
     """Scrape computed styles and return normalized tokens + a summary for confirmation."""
     feas = can_extract(url)
@@ -132,7 +196,7 @@ def extract_tokens(url: str, timeout_ms: int = 20000) -> dict:
     if brand:
         light["brand"] = _to_hex(brand)
 
-    return {
+    result = {
         "url": url,
         "summary": {
             "primary_bg": light.get("bg"),
@@ -144,6 +208,10 @@ def extract_tokens(url: str, timeout_ms: int = 20000) -> dict:
             "shadow_samples": shadows,
             "palette": [_to_hex(rgb) for rgb, _ in (fg_merged + bg_merged)[:8]],
         },
+        "type_scale": _type_scale(raw.get("typo", {})),
+        "spacing_scale": _spacing_scale(raw["spaces"]),
         "token_spec_seed": {"name": re.sub(r"^https?://(www\.)?", "", url).split("/")[0], "light": light, "dark": light},
         "note": "Extraction is heuristic. Confirm the summary before adopting; extend into a full TokenSpec.",
     }
+    result["design_md"] = to_design_md(result)
+    return result

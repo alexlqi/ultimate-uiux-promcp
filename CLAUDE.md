@@ -6,9 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A token-first UI design pipeline exposed as a **ProMCP-native** MCP server. It runs over
 `promcp>=0.3.0`, which sits over `fastmcp>=3.4,<4`. The server helps an LLM design and
-build UIs across four deterministic **paradigm verticals** — `web` (React + Tailwind v4 +
+build UIs across five deterministic **paradigm verticals** — `web` (React + Tailwind v4 +
 shadcn/ui), `flutter-material` (Flutter/Material 3, Android), `flutter-cupertino`
-(Flutter/Cupertino·HIG, iOS), and `email` (bulletproof responsive HTML email for
+(Flutter/Cupertino·HIG, iOS), `react-native` (Expo; one typed `theme.ts`), and `email` (bulletproof responsive HTML email for
 Outlook/Gmail/Apple Mail) — where design tokens are the single source of truth. A horizontal
 stability layer (preflight, spec validation, diagnostics) makes builds fast and fault-tolerant.
 
@@ -86,7 +86,7 @@ tool, decide honestly which category it is — if it touches the world it's a `d
 
 - `contrast.py` — pure WCAG 2.1 ratio + APCA Lc math. Verifiable numbers, not estimates.
 - `tokens.py` — `TokenSpec` dataclass + emitters. One design decision → deterministic files.
-  **Four paradigm verticals**, each its own emitter: web (`emit_css`, `emit_tailwind_v4`,
+  **Five paradigm verticals** (the fifth, `react-native` → `emit_react_native`, emits a typed `theme.ts`), each its own emitter: web (`emit_css`, `emit_tailwind_v4`,
   `emit_shadcn`) + DTCG (`build_dtcg`); Android (`emit_flutter_material` → MD3: seeded
   `ColorScheme.fromSeed` with spec roles pinned, 8-dp grid, 48-dp touch floor, `ThemeExtension`);
   iOS (`emit_flutter_cupertino` → HIG: `CupertinoThemeData`, 44-pt floor, `AppTokensScope`
@@ -100,8 +100,19 @@ tool, decide honestly which category it is — if it touches the world it's a `d
   `diagnostics(ledger)` is the debug channel. `PARADIGMS` maps each vertical → its emitter targets
   + required/soft roles. Failures are structured data with severity + fix hints, never tracebacks.
 - `audit.py` — fetches the live Vercel Web Interface Guidelines + runs deterministic anti-slop/
-  a11y heuristics over source, returning `file:line` findings. Judgment-level review is left to
-  the model reading the guidelines resource.
+  a11y heuristics over source, returning `file:line` findings (each tagged with a `category`:
+  `a11y`, `motion`, `tell` (taste-skill tells), `react`/`perf` (Vercel agent-skills), `rn`).
+  Judgment-level review is left to the model reading the guidelines resource.
+- `styles.py` + `data/*.json` — taste-skill art directions/palettes (MIT, bundled). Palettes are
+  measured with `contrast.py` and exposed as token-spec seeds.
+- `brief.py` — composite `read_design_brief`: direction → palette → type → blueprints → paradigm-validated
+  spec seed. Deterministic; `test_design_brief_end_to_end_across_all_four_verticals` pins it per paradigm.
+  `audit.py` also has `_DART_CHECKS`, applied only to `*.dart` (web heuristics skip Dart files).
+- `designmd.py` — awesome-design-md importer (live fetch, bundled brand list as offline fallback);
+  tolerant of both upstream formats; normalizes into the TokenSpec seed shape.
+- `skillrules.py` — serves any Vercel agent-skills rule from the bundled snapshot (`data/agent_skills`, all rules), live fetch only as fallback; `rule=''` = full skill index.
+- `render.py` — Playwright rendered QA (viewports, overflow, console, contrast, targets); the
+  outbound twin of `extract.py`. Observation never writes or clicks; `capture_screenshots` is the one write, surfaced only as `do_capture_screenshots` (own `_SHOT_APPLIED` ledger). `extract.py` also returns `type_scale`, `spacing_scale` and a `design_md` export that round-trips through `designmd.parse_design_md`.
 - `extract.py` — Playwright headless Chromium reads *computed* styles from a public site's DOM,
   normalizing into the same `TokenSpec` shape the generator consumes. Playwright is optional;
   its absence is reported by `can_do`, not a cryptic failure.
@@ -127,6 +138,10 @@ attached via `server.raw` because they're not part of the triadic *tool* surface
   `read_generated_tokens`/`do_write_token_files` select emitters by `targets`, and the emitted
   Flutter filenames are distinct (`app_theme_material.dart` / `app_theme_cupertino.dart`) so all
   three Flutter variants can coexist. Each paradigm also has a knowledge stage in `_STAGES`.
+- New knowledge stages live in `_STAGES` too: `taste`, `react`, `react-native`, `design-md`,
+  `render-qa`. Bundled data goes in `ultimate_ui/data/` and must be listed in `package-data`.
+- In `read_*` descriptions avoid mutation-looking words (`set`, `write`, `delete`…): lint rule
+  D003 flags them (e.g. say "limits to", not "subset").
 - Keep `PYTHONPATH=. python -c "from server import lint; lint()"` at **0 errors and 0 tool-level
   warnings**. The one tolerated finding is the **global S004** surface-size advisory: the stability
   layer intentionally pushes the surface past 8 tools. `test_core.py::test_promcp_lint_is_clean`

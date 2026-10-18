@@ -47,6 +47,12 @@ PARADIGMS: dict[str, dict] = {
         "soft_roles": ["on-brand", "danger"],
         "label": "Flutter / Cupertino · HIG (iOS)",
     },
+    "react-native": {
+        "targets": ["dtcg", "react-native"],
+        "required_roles": ["bg", "fg", "brand"],
+        "soft_roles": ["on-brand", "muted", "muted-fg", "border", "danger"],
+        "label": "React Native / Expo (iOS + Android)",
+    },
     "email": {
         "targets": ["dtcg", "email"],
         "required_roles": ["bg", "fg", "brand"],
@@ -188,6 +194,15 @@ def preflight(paradigm: str) -> dict:
                              f"{pm} available" if pm else "no npm/pnpm/yarn/bun on PATH"))
         checks.append(_check("tailwind", True,
                              "Tailwind v4 is a project-local dep (npm i tailwindcss@next); not a global check",
+                             severity="warning"))
+    elif paradigm == "react-native":
+        node = _has("node")
+        checks.append(_check("node", node, "node on PATH" if node else "install Node.js 18+ (nodejs.org)"))
+        pm = next((p for p in ("pnpm", "npm", "yarn", "bun") if _has(p)), None)
+        checks.append(_check("package-manager", pm is not None,
+                             f"{pm} available" if pm else "no npm/pnpm/yarn/bun on PATH"))
+        checks.append(_check("expo", True,
+                             "Expo/React Native are project-local deps (npx create-expo-app); not a global check",
                              severity="warning"))
     elif paradigm == "email":
         # Email output is host-agnostic HTML — nothing to install to generate it. The real
@@ -336,6 +351,7 @@ _EMITTERS = {
     "flutter": _tokens.emit_flutter,
     "flutter-material": _tokens.emit_flutter_material,
     "flutter-cupertino": _tokens.emit_flutter_cupertino,
+    "react-native": _tokens.emit_react_native,
     "email": _tokens.emit_email,
 }
 

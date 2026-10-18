@@ -27,11 +27,16 @@ INSTRUCTIONS = (
     "validation, diagnostics); do_write_token_files is the only mutation (persists files, "
     "compensable); can_do gates preconditions. Four paradigm verticals: "
     "web = React + Tailwind v4 + shadcn/ui; flutter-material = Flutter/Material 3 (Android); "
-    "flutter-cupertino = Flutter/Cupertino·HIG (iOS); email = bulletproof cross-client HTML "
+    "flutter-cupertino = Flutter/Cupertino·HIG (iOS); react-native = React Native/Expo; email = bulletproof cross-client HTML "
     "email (Outlook/Gmail/Apple Mail, dark mode, CAN-SPAM). For fast + fault-tolerant builds: "
     "read_preflight('<paradigm>') → read_spec_validation(spec,'<paradigm>') → "
     "read_generated_tokens → do_write_token_files, and read_diagnostics to debug. "
-    "Read read_design_reference('<stage>') before building each stage."
+    "Read read_design_reference('<stage>') before building each stage. Depth tools: "
+    "read_style_directions + read_palette_suggestions (curated art direction and measured "
+    "palettes — anti-slop 'taste'), read_design_md(brand) (a documented brand system as a "
+    "token-spec seed), read_agent_skill_rule (Vercel React/React-Native rules), and "
+    "read_rendered_audit (Playwright: render the build at mobile/tablet/desktop and report "
+    "overflow, console errors, contrast, targets)."
 )
 
 # Map ToolEntry.category -> the transport register method + how to derive the capability slug.
@@ -72,30 +77,39 @@ def _attach_knowledge_and_prompts(server: ProMCPServer) -> None:
     @mcp.prompt
     def design_pipeline(brief: str, paradigm: str = "web") -> str:
         """Orchestrate the full token-first pipeline for a paradigm vertical.
-        paradigm ∈ {web, flutter-material (Android), flutter-cupertino (iOS), email (HTML email)}."""
+        paradigm ∈ {web, flutter-material (Android), flutter-cupertino (iOS), react-native (Expo), email (HTML email)}."""
         stack_ref = {
             "web": "web-stack",
             "flutter-material": "flutter-material",
             "flutter-cupertino": "flutter-cupertino",
+            "react-native": "react-native",
             "email": "email",
         }.get(paradigm, "web-stack")
         target = {"web": "shadcn (+css/tailwind/dtcg)",
                   "flutter-material": "flutter-material",
                   "flutter-cupertino": "flutter-cupertino",
+                  "react-native": "react-native",
                   "email": "email"}.get(paradigm, "shadcn")
         return (
             f"Design and build: {brief}\nParadigm: {paradigm} → read_design_reference('{stack_ref}').\n\n"
             "Run the token-first pipeline using this server's ProMCP tools:\n"
             f"0. Preflight — read_preflight('{paradigm}'); resolve blockers before building (warnings are OK).\n"
-            "1. Intelligence — read_design_reference('intelligence'); produce a design-system "
-            "decision (pattern, palette, type ramp, spacing, effects, anti-pattern list).\n"
+            f"1. Intelligence — read_design_brief(sector, tone, '{paradigm}') returns a committed direction, "
+            "measured palette, type system, blueprints and a validated spec_seed in one call; then "
+            "read_design_reference('intelligence') and read_design_reference('taste'); "
+            "read_style_directions(sector, tone) → commit to ONE direction; read_palette_suggestions(its "
+            "paletteTags) for a measured palette (or read_design_md(<brand>) to learn a documented "
+            "system's structure). Produce a design-system decision (pattern, palette, type ramp, "
+            "spacing, effects, anti-pattern list).\n"
             f"2. Validate — read_spec_validation(spec, '{paradigm}'); fix every error before persisting.\n"
             f"3. Tokens — read_generated_tokens(spec, targets=['{target}']); verify its _contrast_check. "
             "can_do({'semantic_tags':['write_token_files'],'context':{'output_dir':...}}) "
             "then do_write_token_files to persist.\n"
             f"4. Components — read_design_reference('{stack_ref}'); consume ONLY tokens, all states.\n"
             "5. Motion — read_design_reference('motion'); add sparingly by interaction frequency.\n"
-            "6. Audit — read_web_guidelines + read_ui_audit(files); fix before done.\n"
+            "6. Audit — read_web_guidelines + read_ui_audit(files) (tells, a11y, react/RN rules); then "
+            "can_do(['render_qa']) and read_rendered_audit(<url or built html>) at all viewports; fix "
+            "Critical and Major before done.\n"
             "7. Debug — if anything is off, read_diagnostics to inspect the ledger + emitter health.\n\n"
             "Never hardcode a value that should be a token. Pass the anti-slop gate."
         )
